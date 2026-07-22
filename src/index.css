@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #090909;
+    --bg-surface: #111111;
+    --bg-elevated: #1a1a1a;
+    --border: #242424;
+    --border-muted: #1c1c1c;
+    --text-primary: #f5f5f5;
+    --text-secondary: #a3a3a3;
+    --text-muted: #525252;
+    --saffron: #f97316;
+    --saffron-dim: #c2410c;
+    --saffron-glow: rgba(249, 115, 22, 0.15);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2a2a2a #111111;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #111111;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #2a2a2a;
+    border-radius: 3px;
+  }
+
+  body {
+    @apply bg-[#090909] text-[#f5f5f5] antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  input, textarea, select {
+    @apply bg-transparent;
+  }
+}
+
+@layer utilities {
+  .saffron-glow {
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.2);
+  }
+
+  .border-saffron-dim {
+    border-color: rgba(249, 115, 22, 0.3);
+  }
+
+  .text-gradient-saffron {
+    background: linear-gradient(135deg, #f97316, #fb923c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+/* Dropdown options dark theme */
+select option {
+  background: #1a1a1a;
+  color: #f5f5f5;
+}
+select option:hover,
+select option:focus,
+select option:active {
+  background: #f97316;
+  color: #ffffff;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-po, #printable-po * {
+    visibility: visible;
+  }
+  #printable-po {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+    color: black !important;
+  }
+  #printable-po .bg-\[#111111\] {
+    background: white !important;
+    border-color: #ddd !important;
+  }
+  #printable-po .text-\[\#f5f5f5\] {
+    color: black !important;
+  }
+  #printable-po .text-\[\#a3a3a3\] {
+    color: #555 !important;
+  }
+  #printable-po .border-\[#1c1c1c\] {
+    border-color: #ddd !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
