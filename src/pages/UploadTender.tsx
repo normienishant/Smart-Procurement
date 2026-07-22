@@ -2,24 +2,98 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileText, X, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import * as pdfjsLib from 'pdfjs-dist';
+import mammoth from 'mammoth';
+
+// 🔥 Showcase AI style – stable CDN worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 type UploadState = 'idle' | 'reading' | 'extracting' | 'saving' | 'done' | 'error';
 
 const ACCEPTED = ['.pdf', '.txt', '.doc', '.docx'];
-const MAX_SIZE_MB = 10;
+const MAX_SIZE_MB = 15;
 
-// Helper to convert File → base64 (for backend processing)
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(',')[1]; // remove data:...;base64,
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+// 🔥 PDF to Image (for OCR) – same as Showcase AI
+async function pdfToImage(file: File, pageNum: number = 1): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 2.0 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas.toDataURL('image/png');
+}
+
+// 🔥 Extract text – first pdf.js, then OCR fallback
+async function extractPDFText(file: File): Promise<string> {
+  console.log('📄 Showcase AI style extraction:', file.name);
+  
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      fullText += pageText + '\n';
+    }
+    console.log('📄 PDF text extracted:', fullText.length, 'chars');
+    
+    if (fullText.trim().length > 50) {
+      return fullText;
+    }
+    
+    // 🔥 If no text, OCR – same as Showcase AI
+    console.warn('⚠️ No text found, starting OCR...');
+    const Tesseract = (await import('tesseract.js')).default;
+    const pagesToTry = Math.min(pdf.numPages, 5);
+    let ocrText = '';
+    for (let i = 1; i <= pagesToTry; i++) {
+      try {
+        console.log(`📄 OCR page ${i}...`);
+        const imageDataUrl = await pdfToImage(file, i);
+        const result = await Tesseract.recognize(imageDataUrl, 'eng', {
+          logger: (m) => console.log('📄 OCR:', m.status, Math.round(m.progress * 100) + '%'),
+        });
+        ocrText += result.data.text + '\n';
+      } catch (e) {
+        console.warn('⚠️ OCR page', i, 'failed:', e);
+      }
+    }
+    return ocrText || fullText;
+    
+  } catch (error: any) {
+    console.error('❌ PDF error:', error.message);
+    // Last chance: OCR on first page
+    try {
+      console.log('📄 Final OCR attempt...');
+      const Tesseract = (await import('tesseract.js')).default;
+      const imageDataUrl = await pdfToImage(file, 1);
+      const result = await Tesseract.recognize(imageDataUrl, 'eng', {
+        logger: (m) => console.log('📄 OCR:', m.status),
+      });
+      return result.data.text || '';
+    } catch (ocrErr: any) {
+      console.error('❌ OCR failed:', ocrErr.message);
+      throw new Error(`Could not extract text from PDF: ${error.message}`);
+    }
+  }
+}
+
+// DOCX extraction – Showcase AI style
+async function extractDOCXText(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value || '';
+}
+
+// TXT extraction
+async function extractTXTText(file: File): Promise<string> {
+  return await file.text();
 }
 
 export default function UploadTender() {
@@ -60,53 +134,32 @@ export default function UploadTender() {
     setErrorMsg('');
 
     try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
       let extractedText = '';
-      const fileType = file.type || 'application/octet-stream';
-      const ext = '.' + file.name.split('.').pop()?.toLowerCase();
 
-      // 1. TXT – read directly
-      if (fileType === 'text/plain' || ext === '.txt') {
-        const reader = new FileReader();
-        const text = await new Promise<string>((resolve) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsText(file);
-        });
-        extractedText = text.replace(/\u0000/g, '').trim();
-      } 
-      // 2. PDF / DOCX / others → send to backend for extraction (with OCR fallback)
-      else {
+      if (ext === 'pdf') {
         setState('extracting');
-        const base64 = await readFileAsBase64(file);
-        const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-tender-text`;
-        const res = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            fileBase64: base64,
-            fileType: fileType,
-            fileName: file.name,
-          }),
-        });
-        if (!res.ok) {
-          const errBody = await res.text().catch(() => '');
-          throw new Error(`Extraction failed (${res.status}): ${errBody.slice(0, 200)}`);
-        }
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        extractedText = data.text || '';
+        extractedText = await extractPDFText(file);
+      } else if (ext === 'docx' || ext === 'doc') {
+        setState('extracting');
+        extractedText = await extractDOCXText(file);
+      } else if (ext === 'txt') {
+        extractedText = await extractTXTText(file);
+      } else {
+        throw new Error('Unsupported file format');
       }
 
-      // If still empty, throw
-      if (!extractedText.trim()) {
-        throw new Error('No text could be extracted. The file may be empty or unsupported.');
+      extractedText = extractedText
+        .replace(/\u0000/g, '')
+        .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/g, '')
+        .trim();
+
+      if (!extractedText) {
+        throw new Error('No readable text found in the file.');
       }
 
       setState('saving');
 
-      // Save to Supabase
       const { data, error } = await supabase
         .from('tenders')
         .insert({
@@ -120,21 +173,22 @@ export default function UploadTender() {
         .single();
 
       if (error || !data) {
-        throw new Error('Failed to save tender. Please try again.');
+        console.error('Supabase error:', error);
+        throw new Error('Failed to save tender.');
       }
 
       setState('done');
       setTimeout(() => navigate(`/analysis/${data.id}`), 800);
 
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Unknown error.');
+    } catch (err: any) {
+      console.error('❌ Upload error:', err);
+      setErrorMsg(err.message || 'Unknown error.');
       setState('error');
     }
   }
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
-      {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-1">
           <Upload size={14} className="text-[#f97316]" />
@@ -147,7 +201,6 @@ export default function UploadTender() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Dropzone */}
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -197,7 +250,7 @@ export default function UploadTender() {
                 Drag & drop or click to browse
               </p>
               <p className="text-xs text-[#525252]">
-                Supports PDF, Word (.doc/.docx), plain text — up to {MAX_SIZE_MB}MB
+                Supports PDF, Word (.doc/.docx), and plain text — up to {MAX_SIZE_MB}MB
                 <br />
                 <span className="text-[#3a3a3a]">(Scanned PDFs will be OCR-processed)</span>
               </p>
@@ -205,7 +258,6 @@ export default function UploadTender() {
           )}
         </div>
 
-        {/* Title */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-widest text-[#a3a3a3] mb-2">
             Document Title
@@ -219,7 +271,6 @@ export default function UploadTender() {
           />
         </div>
 
-        {/* Tender Type */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-widest text-[#a3a3a3] mb-2">
             Tender Type
@@ -238,7 +289,6 @@ export default function UploadTender() {
           </select>
         </div>
 
-        {/* Info box */}
         <div className="rounded-xl bg-[#111111] border border-[#1c1c1c] p-4">
           <p className="text-xs font-semibold uppercase tracking-widest text-[#525252] mb-2">What happens next</p>
           <ol className="space-y-1.5">
@@ -258,7 +308,6 @@ export default function UploadTender() {
           </ol>
         </div>
 
-        {/* Error */}
         {errorMsg && (
           <div className="flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
             <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
@@ -266,7 +315,6 @@ export default function UploadTender() {
           </div>
         )}
 
-        {/* Submit */}
         <button
           type="submit"
           disabled={!file || !title.trim() || state === 'reading' || state === 'extracting' || state === 'saving' || state === 'done'}
@@ -274,11 +322,11 @@ export default function UploadTender() {
         >
           {state === 'reading' && <><Loader2 size={15} className="animate-spin" /> Reading file…</>}
           {state === 'extracting' && <><Loader2 size={15} className="animate-spin" /> Extracting text (OCR if needed)…</>}
-          {state === 'saving' && <><Loader2 size={15} className="animate-spin" /> Saving to database…</>}
+          {state === 'saving' && <><Loader2 size={15} className="animate-spin" /> Saving…</>}
           {state === 'done' && <><CheckCircle2 size={15} /> Saved! Launching AI Analysis…</>}
           {(state === 'idle' || state === 'error') && <><Upload size={15} /> Upload & Analyze with AI</>}
         </button>
       </form>
     </div>
   );
-} 
+}

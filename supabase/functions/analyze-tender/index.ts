@@ -76,17 +76,39 @@ Important: The JSON must have these exact top-level keys. Do not omit any.
   ]
 }
 
-Extract:
-- basicDetails: all 12 fields from the document.
-- client_name, project_name, project_location, scope_of_work.
-- materials_required: array of material names.
-- deadlines_milestones: array of {milestone, date}.
-- risks_penalties: array of {risk, penalty}.
-- payment_terms.
-- eligibilityRequirements: all 12 boolean/string fields.
-- technicalSpecs: array of {spec, value, unit}.
-- importantClauses: array of {clause, text}.
-- boqItems: array of line items with at least 3-5 items based on the materials and typical quantities/rates from the document. Use realistic Indian rates.
+Extraction Rules:
+1. **basicDetails**: Extract all 12 fields exactly as they appear. For dates, keep as string (e.g., "15 June 2025").
+2. **client_name, project_name, project_location**: Extract from document.
+3. **scope_of_work**: Extract the FULL detailed scope, not a summary.
+4. **materials_required**: Include ALL materials mentioned (be exhaustive).
+5. **deadlines_milestones**: Array of {milestone, date} – extract all deadlines/milestones with exact dates.
+6. **risks_penalties**: Array of {risk, penalty} – include ALL risks and penalties mentioned.
+7. **payment_terms**: Extract full payment structure (e.g., Hybrid Annuity Model, percentages, milestones).
+8. **eligibilityRequirements**: For booleans, use true if the requirement is explicitly mentioned as needed, otherwise false.
+   - turnover_required: Exact string (e.g., "₹10 Crore (last 3 years)")
+   - experience_required: Exact string (e.g., "5 years in similar pipeline projects")
+   - oem_authorization_needed: true if "OEM Authorization" is required
+   - maf_required: true if "MAF" is required
+   - iso_certificates_required: exact ISO numbers
+   - msme_benefits: true if MSME benefits are available
+   - startup_exemption: true if startup exemption is available
+   - pan: true if PAN is required
+   - gst: true if GST is required
+   - itr: true if ITR is required
+   - balance_sheet: true if Balance Sheet is required
+   - ca_certificate: true if CA Certificate is required
+9. **technicalSpecs**: Array of {spec, value, unit} – extract all technical specifications.
+10. **importantClauses**: Array of {clause, text} – MUST include ALL 8 clauses:
+    - "Liquidated Damages"
+    - "Penalty"
+    - "Delivery Timeline"
+    - "Blacklisting"
+    - "Payment Terms"
+    - "Inspection"
+    - "Arbitration"
+    - "Termination"
+    If a clause is not found, use empty string for text.
+11. **boqItems**: Array of line items – extract or estimate from the document. Use realistic quantities and Indian market rates.
 
 Return ONLY valid JSON.`;
 
@@ -190,7 +212,6 @@ Return ONLY valid JSON.`;
 
     await supabase.from("tenders").update(tenderUpdate).eq("id", tenderId);
 
-    // Save analysis
     const { data: existing } = await supabase
       .from("tender_analysis")
       .select("id")
@@ -215,11 +236,9 @@ Return ONLY valid JSON.`;
 
     if (result.error) throw new Error("Failed to save analysis.");
 
-    // --- Insert BOQ items ---
+    // Insert BOQ items
     if (boqItems.length > 0) {
-      // Delete existing boq items for this tender (avoid duplicates)
       await supabase.from("boq_items").delete().eq("tender_id", tenderId);
-
       const boqInsert = boqItems.map((item: any, idx: number) => ({
         tender_id: tenderId,
         item_code: String(item.item_code || `ITEM-${idx+1}`),
