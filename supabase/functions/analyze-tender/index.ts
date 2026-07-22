@@ -77,28 +77,28 @@ Important: The JSON must have these exact top-level keys. Do not omit any.
 }
 
 Extraction Rules:
-1. **basicDetails**: Extract all 12 fields exactly as they appear. For dates, keep as string (e.g., "15 June 2025").
+1. **basicDetails**: Extract all 12 fields exactly as they appear. For dates, keep as string (e.g., "15 June 2025"). If a field is not present, use empty string or 0.
 2. **client_name, project_name, project_location**: Extract from document.
 3. **scope_of_work**: Extract the FULL detailed scope, not a summary.
 4. **materials_required**: Include ALL materials mentioned (be exhaustive).
-5. **deadlines_milestones**: Array of {milestone, date} – extract all deadlines/milestones with exact dates.
-6. **risks_penalties**: Array of {risk, penalty} – include ALL risks and penalties mentioned.
+5. **deadlines_milestones**: Array of {milestone, date} – extract all deadlines/milestones with exact dates. If no explicit date is mentioned, set date as empty string.
+6. **risks_penalties**: Array of {risk, penalty} – EXTRACT ONLY if explicitly mentioned in the document. If no risks/penalties are explicitly stated, return an empty array. Do NOT invent risks.
 7. **payment_terms**: Extract full payment structure (e.g., Hybrid Annuity Model, percentages, milestones).
-8. **eligibilityRequirements**: For booleans, use true if the requirement is explicitly mentioned as needed, otherwise false.
+8. **eligibilityRequirements**: For booleans, use true ONLY if the requirement is explicitly mentioned as needed, otherwise false.
    - turnover_required: Exact string (e.g., "₹10 Crore (last 3 years)")
    - experience_required: Exact string (e.g., "5 years in similar pipeline projects")
-   - oem_authorization_needed: true if "OEM Authorization" is required
-   - maf_required: true if "MAF" is required
-   - iso_certificates_required: exact ISO numbers
-   - msme_benefits: true if MSME benefits are available
-   - startup_exemption: true if startup exemption is available
-   - pan: true if PAN is required
-   - gst: true if GST is required
-   - itr: true if ITR is required
-   - balance_sheet: true if Balance Sheet is required
-   - ca_certificate: true if CA Certificate is required
+   - oem_authorization_needed: true if "OEM Authorization" is explicitly required
+   - maf_required: true if "MAF" is explicitly required
+   - iso_certificates_required: exact ISO numbers (e.g., "ISO 9001, ISO 14001")
+   - msme_benefits: true if MSME benefits are explicitly available
+   - startup_exemption: true if startup exemption is explicitly available
+   - pan: true if PAN is explicitly required
+   - gst: true if GST is explicitly required
+   - itr: true if ITR is explicitly required
+   - balance_sheet: true if Balance Sheet is explicitly required
+   - ca_certificate: true if CA Certificate is explicitly required
 9. **technicalSpecs**: Array of {spec, value, unit} – extract all technical specifications.
-10. **importantClauses**: Array of {clause, text} – MUST include ALL 8 clauses:
+10. **importantClauses**: Array of {clause, text} – MUST include ALL 8 clause names:
     - "Liquidated Damages"
     - "Penalty"
     - "Delivery Timeline"
@@ -107,8 +107,8 @@ Extraction Rules:
     - "Inspection"
     - "Arbitration"
     - "Termination"
-    If a clause is not found, use empty string for text.
-11. **boqItems**: Array of line items – extract or estimate from the document. Use realistic quantities and Indian market rates.
+    For each clause, if the clause text is NOT explicitly found in the document, set text to "" (empty string). Do NOT invent text.
+11. **boqItems**: Array of line items – extract or estimate from the document. Use realistic quantities and Indian market rates. If no BOQ items are found, return an empty array.
 
 Return ONLY valid JSON.`;
 
