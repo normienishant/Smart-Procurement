@@ -9,6 +9,8 @@ import {
   ArrowRight,
   TrendingUp,
   Layers,
+  Activity,
+  DollarSign,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Tender } from '@/lib/database.types';
@@ -19,6 +21,7 @@ interface Stats {
   pending: number;
   analyzed: number;
   submitted: number;
+  totalEstimatedValue: number;
 }
 
 function StatCard({
@@ -28,7 +31,7 @@ function StatCard({
   accent,
 }: {
   label: string;
-  value: number;
+  value: string | number;
   icon: React.ReactNode;
   accent?: boolean;
 }) {
@@ -42,7 +45,7 @@ function StatCard({
     >
       <div>
         <p className="text-xs text-[#a3a3a3] uppercase tracking-widest mb-1.5">{label}</p>
-        <p className={`text-3xl font-bold ${accent ? 'text-[#f97316]' : 'text-[#f5f5f5]'}`}>{value}</p>
+        <p className={`text-2xl font-bold ${accent ? 'text-[#f97316]' : 'text-[#f5f5f5]'}`}>{value}</p>
       </div>
       <div className={`p-2.5 rounded-lg ${accent ? 'bg-[#f97316]/15 text-[#f97316]' : 'bg-[#1a1a1a] text-[#525252]'}`}>
         {icon}
@@ -55,7 +58,13 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, analyzed: 0, submitted: 0 });
+  const [stats, setStats] = useState<Stats>({
+    total: 0,
+    pending: 0,
+    analyzed: 0,
+    submitted: 0,
+    totalEstimatedValue: 0,
+  });
 
   useEffect(() => {
     async function load() {
@@ -67,11 +76,13 @@ export default function Dashboard() {
 
       const rows = data ?? [];
       setTenders(rows);
+      const totalEst = rows.reduce((sum, r) => sum + (Number(r.estimated_value) || 0), 0);
       setStats({
         total: rows.length,
         pending: rows.filter((r) => ['uploaded', 'analyzing'].includes(r.status)).length,
         analyzed: rows.filter((r) => ['analyzed', 'reviewing'].includes(r.status)).length,
         submitted: rows.filter((r) => r.status === 'submitted').length,
+        totalEstimatedValue: totalEst,
       });
       setLoading(false);
     }
@@ -80,7 +91,7 @@ export default function Dashboard() {
 
   function handleTenderClick(tender: Tender) {
     if (tender.status === 'uploaded') {
-      navigate(`/upload`);
+      navigate('/upload');
     } else if (tender.status === 'analyzing' || tender.status === 'analyzed') {
       navigate(`/analysis/${tender.id}`);
     } else if (tender.status === 'reviewing') {
@@ -105,11 +116,35 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <StatCard label="Total Tenders" value={stats.total} icon={<Layers size={18} />} accent />
         <StatCard label="Pending Review" value={stats.pending} icon={<Clock size={18} />} />
         <StatCard label="AI Analyzed" value={stats.analyzed} icon={<CheckCircle2 size={18} />} />
         <StatCard label="POs Submitted" value={stats.submitted} icon={<AlertTriangle size={18} />} />
+        <StatCard label="Total Est. Value" value={`₹${(stats.totalEstimatedValue / 10000000).toFixed(1)}Cr`} icon={<DollarSign size={18} />} />
+      </div>
+
+      {/* Recent Activity Feed */}
+      <div className="bg-[#111111] border border-[#1c1c1c] rounded-xl p-5 mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <Activity size={16} className="text-[#f97316]" />
+          <h2 className="text-sm font-semibold text-[#f5f5f5] uppercase tracking-widest">Recent Activity</h2>
+        </div>
+        {tenders.length === 0 ? (
+          <p className="text-xs text-[#525252]">No activity yet. Upload your first tender.</p>
+        ) : (
+          <div className="space-y-2">
+            {tenders.slice(0, 5).map((t) => (
+              <div key={t.id} className="flex items-center justify-between border-b border-[#1c1c1c] pb-2 last:border-0">
+                <div className="flex items-center gap-3">
+                  <FileText size={14} className="text-[#525252]" />
+                  <span className="text-sm text-[#d4d4d4]">{t.title}</span>
+                </div>
+                <StatusBadge status={t.status} />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* CTA */}
@@ -185,7 +220,9 @@ export default function Dashboard() {
                     <td className="px-5 py-4">
                       <span className="text-xs text-[#525252]">
                         {new Date(tender.created_at).toLocaleDateString('en-IN', {
-                          day: '2-digit', month: 'short', year: 'numeric',
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
                         })}
                       </span>
                     </td>

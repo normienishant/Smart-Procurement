@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileText, X, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { Upload, FileText, X, AlertCircle, Loader2, CheckCircle2, Eye, ChevronDown } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
+import toast from 'react-hot-toast';
 
 // 🔥 Showcase AI style – stable CDN worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -104,6 +105,8 @@ export default function UploadTender() {
   const [state, setState] = useState<UploadState>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [extractedText, setExtractedText] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
 
   function validateFile(f: File): string | null {
     const ext = '.' + f.name.split('.').pop()?.toLowerCase();
@@ -118,6 +121,8 @@ export default function UploadTender() {
     setErrorMsg('');
     setFile(f);
     if (!title) setTitle(f.name.replace(/\.[^.]+$/, ''));
+    setExtractedText('');
+    setShowPreview(false);
   }
 
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -158,6 +163,10 @@ export default function UploadTender() {
         throw new Error('No readable text found in the file.');
       }
 
+      // Show preview immediately
+      setExtractedText(extractedText.slice(0, 500));
+      setShowPreview(true);
+
       setState('saving');
 
       const { data, error } = await supabase
@@ -177,6 +186,7 @@ export default function UploadTender() {
         throw new Error('Failed to save tender.');
       }
 
+      toast.success('File uploaded & text extracted!');
       setState('done');
       setTimeout(() => navigate(`/analysis/${data.id}`), 800);
 
@@ -184,11 +194,13 @@ export default function UploadTender() {
       console.error('❌ Upload error:', err);
       setErrorMsg(err.message || 'Unknown error.');
       setState('error');
+      toast.error(err.message || 'Upload failed');
     }
   }
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
+      {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-1">
           <Upload size={14} className="text-[#f97316]" />
@@ -201,6 +213,7 @@ export default function UploadTender() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Dropzone */}
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -235,7 +248,7 @@ export default function UploadTender() {
               </div>
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); setFile(null); setTitle(''); setState('idle'); }}
+                onClick={(e) => { e.stopPropagation(); setFile(null); setTitle(''); setExtractedText(''); setShowPreview(false); setState('idle'); }}
                 className="ml-auto p-1.5 rounded-md hover:bg-[#ffffff10] text-[#525252] hover:text-[#f5f5f5] transition-colors"
               >
                 <X size={16} />
@@ -258,6 +271,30 @@ export default function UploadTender() {
           )}
         </div>
 
+        {/* Extracted Text Preview */}
+        {extractedText && (
+          <div className="rounded-xl border border-[#1c1c1c] bg-[#111111] overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowPreview(!showPreview)}
+              className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[#ffffff05] transition-colors"
+            >
+              <span className="flex items-center gap-2 text-xs font-semibold text-[#a3a3a3] uppercase tracking-widest">
+                <Eye size={14} /> Extracted Text Preview
+              </span>
+              <ChevronDown size={16} className={`transform transition-transform ${showPreview ? 'rotate-180' : ''}`} />
+            </button>
+            {showPreview && (
+              <div className="px-4 pb-4 max-h-40 overflow-y-auto">
+                <p className="text-xs text-[#d4d4d4] whitespace-pre-wrap font-mono leading-relaxed">
+                  {extractedText}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Title */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-widest text-[#a3a3a3] mb-2">
             Document Title
@@ -271,6 +308,7 @@ export default function UploadTender() {
           />
         </div>
 
+        {/* Tender Type */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-widest text-[#a3a3a3] mb-2">
             Tender Type
@@ -289,6 +327,7 @@ export default function UploadTender() {
           </select>
         </div>
 
+        {/* Info box */}
         <div className="rounded-xl bg-[#111111] border border-[#1c1c1c] p-4">
           <p className="text-xs font-semibold uppercase tracking-widest text-[#525252] mb-2">What happens next</p>
           <ol className="space-y-1.5">
@@ -308,6 +347,7 @@ export default function UploadTender() {
           </ol>
         </div>
 
+        {/* Error */}
         {errorMsg && (
           <div className="flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
             <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
@@ -315,6 +355,7 @@ export default function UploadTender() {
           </div>
         )}
 
+        {/* Submit */}
         <button
           type="submit"
           disabled={!file || !title.trim() || state === 'reading' || state === 'extracting' || state === 'saving' || state === 'done'}

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Tender, TenderAnalysis } from '@/lib/database.types';
+import ProgressBar from '@/components/ProgressBar';
+import toast from 'react-hot-toast';
 
 type Phase = 'idle' | 'calling' | 'saving' | 'done' | 'error';
 
@@ -144,10 +146,12 @@ export default function Analysis() {
       await supabase.from('tenders').update({ status: 'analyzed' }).eq('id', tender.id);
       setTender({ ...tender, status: 'analyzed' });
       setPhase('done');
+      toast.success('Analysis complete!');
     } catch (err) {
       console.error('Analysis error:', err);
       setErrorMsg(err instanceof Error ? err.message : 'Unknown error.');
       setPhase('error');
+      toast.error(err instanceof Error ? err.message : 'Unknown error.');
     }
   }
 
@@ -180,8 +184,14 @@ export default function Analysis() {
 
   if (loadingTender) {
     return (
-      <div className="p-8 flex items-center justify-center h-full">
-        <Loader2 size={24} className="animate-spin text-[#525252]" />
+      <div className="p-8 max-w-5xl mx-auto">
+        <div className="h-8 w-64 bg-[#2a2a2a] rounded mb-4 animate-pulse" />
+        <div className="grid grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 bg-[#1a1a1a] rounded-xl animate-pulse" />
+          ))}
+        </div>
+        <div className="mt-6 h-48 bg-[#1a1a1a] rounded-xl animate-pulse" />
       </div>
     );
   }
@@ -195,8 +205,15 @@ export default function Analysis() {
     );
   }
 
+  // Helper to safely access raw_json
+  const raw = analysis?.raw_json || {};
+  const basicDetails = raw.basicDetails || {};
+  const eligibilityReqs = analysis?.eligibility_requirements || {};
+
   return (
     <div className="p-8 max-w-5xl mx-auto">
+      <ProgressBar step={1} />
+
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -342,7 +359,7 @@ export default function Analysis() {
             </SectionCard>
           )}
 
-          {/* ===== NEW SECTIONS (now safely parsed) ===== */}
+          {/* ===== NEW SECTIONS (with Tooltips) ===== */}
 
           {/* Basic Details (from tender table) */}
           {(tender.department || tender.organization || tender.tender_id) && (
@@ -376,46 +393,22 @@ export default function Analysis() {
             </SectionCard>
           )}
 
-          {/* Eligibility Requirements */}
-          {analysis.eligibility_requirements && Object.keys(analysis.eligibility_requirements).length > 0 && (
+          {/* Eligibility Requirements (with tooltips) */}
+          {Object.keys(eligibilityReqs).length > 0 && (
             <SectionCard icon={<Users size={16} />} label="Eligibility Requirements">
               <div className="grid grid-cols-2 gap-3 text-sm">
-                {analysis.eligibility_requirements.turnover_required && (
-                  <DetailItem label="Turnover Required" value={analysis.eligibility_requirements.turnover_required} />
-                )}
-                {analysis.eligibility_requirements.experience_required && (
-                  <DetailItem label="Experience Required" value={analysis.eligibility_requirements.experience_required} />
-                )}
-                {analysis.eligibility_requirements.oem_authorization_needed !== undefined && (
-                  <DetailItem label="OEM Authorization" value={analysis.eligibility_requirements.oem_authorization_needed ? 'Yes' : 'No'} />
-                )}
-                {analysis.eligibility_requirements.maf_required !== undefined && (
-                  <DetailItem label="MAF Required" value={analysis.eligibility_requirements.maf_required ? 'Yes' : 'No'} />
-                )}
-                {analysis.eligibility_requirements.iso_certificates_required && (
-                  <DetailItem label="ISO Certificates" value={analysis.eligibility_requirements.iso_certificates_required} />
-                )}
-                {analysis.eligibility_requirements.msme_benefits !== undefined && (
-                  <DetailItem label="MSME Benefits" value={analysis.eligibility_requirements.msme_benefits ? 'Yes' : 'No'} />
-                )}
-                {analysis.eligibility_requirements.startup_exemption !== undefined && (
-                  <DetailItem label="Startup Exemption" value={analysis.eligibility_requirements.startup_exemption ? 'Yes' : 'No'} />
-                )}
-                {analysis.eligibility_requirements.pan !== undefined && (
-                  <DetailItem label="PAN Required" value={analysis.eligibility_requirements.pan ? 'Yes' : 'No'} />
-                )}
-                {analysis.eligibility_requirements.gst !== undefined && (
-                  <DetailItem label="GST Required" value={analysis.eligibility_requirements.gst ? 'Yes' : 'No'} />
-                )}
-                {analysis.eligibility_requirements.itr !== undefined && (
-                  <DetailItem label="ITR Required" value={analysis.eligibility_requirements.itr ? 'Yes' : 'No'} />
-                )}
-                {analysis.eligibility_requirements.balance_sheet !== undefined && (
-                  <DetailItem label="Balance Sheet" value={analysis.eligibility_requirements.balance_sheet ? 'Yes' : 'No'} />
-                )}
-                {analysis.eligibility_requirements.ca_certificate !== undefined && (
-                  <DetailItem label="CA Certificate" value={analysis.eligibility_requirements.ca_certificate ? 'Yes' : 'No'} />
-                )}
+                <DetailItem label="Turnover Required" value={eligibilityReqs.turnover_required} />
+                <DetailItem label="Experience Required" value={eligibilityReqs.experience_required} />
+                <DetailItem label="OEM Authorization" value={eligibilityReqs.oem_authorization_needed ? 'Yes' : 'No'} title="OEM Authorization required?" />
+                <DetailItem label="MAF Required" value={eligibilityReqs.maf_required ? 'Yes' : 'No'} title="MAF (Mobilisation Advance Fund) required?" />
+                <DetailItem label="ISO Certificates" value={eligibilityReqs.iso_certificates_required} />
+                <DetailItem label="MSME Benefits" value={eligibilityReqs.msme_benefits ? 'Yes' : 'No'} title="MSME benefits available?" />
+                <DetailItem label="Startup Exemption" value={eligibilityReqs.startup_exemption ? 'Yes' : 'No'} title="Startup exemption available?" />
+                <DetailItem label="PAN Required" value={eligibilityReqs.pan ? 'Yes' : 'No'} title="PAN required?" />
+                <DetailItem label="GST Required" value={eligibilityReqs.gst ? 'Yes' : 'No'} title="GST required?" />
+                <DetailItem label="ITR Required" value={eligibilityReqs.itr ? 'Yes' : 'No'} title="ITR required?" />
+                <DetailItem label="Balance Sheet" value={eligibilityReqs.balance_sheet ? 'Yes' : 'No'} title="Balance Sheet required?" />
+                <DetailItem label="CA Certificate" value={eligibilityReqs.ca_certificate ? 'Yes' : 'No'} title="CA Certificate required?" />
               </div>
             </SectionCard>
           )}
@@ -444,12 +437,12 @@ export default function Analysis() {
             </SectionCard>
           )}
 
-          {/* Important Clauses */}
+          {/* Important Clauses (with tooltips) */}
           {analysis.important_clauses && analysis.important_clauses.length > 0 && (
             <SectionCard icon={<FileCheck size={16} />} label="Important Clauses">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {analysis.important_clauses.map((clause, i) => (
-                  <div key={i} className="p-3 rounded-lg bg-[#1a1a1a] border border-[#242424]">
+                  <div key={i} className="p-3 rounded-lg bg-[#1a1a1a] border border-[#242424]" title={clause.text}>
                     <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wider">{clause.clause || '—'}</p>
                     <p className="text-sm text-[#d4d4d4] mt-1">{clause.text || 'Not found'}</p>
                   </div>
@@ -636,9 +629,9 @@ function SectionCard({ icon, label, children }: { icon: React.ReactNode; label: 
   );
 }
 
-function DetailItem({ label, value }: { label: string; value: string | number }) {
+function DetailItem({ label, value, title }: { label: string; value: string | number; title?: string }) {
   return (
-    <div className="flex items-start gap-2">
+    <div className="flex items-start gap-2" title={title}>
       <span className="text-[10px] font-semibold uppercase tracking-widest text-[#525252] min-w-[120px]">{label}</span>
       <span className="text-sm text-[#d4d4d4]">{value || '—'}</span>
     </div>

@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ShoppingCart, ArrowLeft, Loader2, CheckCircle2, Send,
-  Building2, Calendar, FileText, AlertCircle, Download,
+  Building2, Calendar, FileText, AlertCircle, Download, Copy,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { BOQItem, Tender, TenderAnalysis } from '@/lib/database.types';
+import ProgressBar from '@/components/ProgressBar';
+import toast from 'react-hot-toast';
 
 export default function PurchaseOrder() {
   const { tenderId } = useParams<{ tenderId: string }>();
@@ -60,7 +62,13 @@ export default function PurchaseOrder() {
     setTender(t => t ? { ...t, status: 'submitted' } : t);
     setSubmitting(false);
     setSubmitted(true);
+    toast.success('PO submitted successfully!');
   }
+
+  const copyLink = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    toast.success('PO link copied!');
+  };
 
   if (loading) {
     return (
@@ -104,6 +112,12 @@ export default function PurchaseOrder() {
             className="px-5 py-2.5 rounded-xl border border-[#242424] hover:border-[#f97316]/30 text-[#a3a3a3] hover:text-[#f97316] text-sm transition-colors flex items-center gap-2"
           >
             <Download size={16} /> Download PDF
+          </button>
+          <button
+            onClick={copyLink}
+            className="px-5 py-2.5 rounded-xl border border-[#242424] hover:border-[#f97316]/30 text-[#a3a3a3] hover:text-[#f97316] text-sm transition-colors flex items-center gap-2"
+          >
+            <Copy size={16} /> Copy Link
           </button>
         </div>
       </div>
@@ -161,6 +175,8 @@ export default function PurchaseOrder() {
           }
         }
       `}</style>
+
+      <ProgressBar step={3} />
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6 no-print">
@@ -353,6 +369,12 @@ export default function PurchaseOrder() {
                   className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-[#242424] hover:border-[#f97316]/30 text-[#a3a3a3] hover:text-[#f97316] text-sm font-medium transition-colors"
                 >
                   <Download size={16} /> Download PDF
+                </button>
+                <button
+                  onClick={copyLink}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-[#242424] hover:border-[#f97316]/30 text-[#a3a3a3] hover:text-[#f97316] text-sm font-medium transition-colors"
+                >
+                  <Copy size={16} /> Copy Link
                 </button>
                 <button
                   onClick={handleSubmit}

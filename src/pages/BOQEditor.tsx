@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ClipboardList, ArrowLeft, ArrowRight, Plus, Trash2, Loader2,
-  Sparkles, Send, AlertCircle, Save, X,
+  Sparkles, Send, AlertCircle, Save, X, Download, Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { BOQItem, Tender } from '@/lib/database.types';
+import ProgressBar from '@/components/ProgressBar';
+import toast from 'react-hot-toast';
 
 interface DraftItem {
   id?: string;
@@ -40,32 +42,126 @@ export default function BOQEditor() {
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [copilotError, setCopilotError] = useState('');
   const [copilotSuggestion, setCopilotSuggestion] = useState<DraftItem[] | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState('');
+  const [hasChanges, setHasChanges] = useState(false);
+  const itemsRef = useRef(items);
+  const saveTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  const saveBOQ = useCallback(async (showToast = false) => {
+    if (!tenderId) return;
+    setSaving(true);
+    try {
+      const validItems = items.filter(i => i.description.trim());
+      await supabase.from('boq_items').delete().eq('tender_id', tenderId);
+      if (validItems.length > 0) {
+        const inserts = validItems.map((it, i) => ({
+          tender_id: tenderId,
+          item_code: it.item_code,
+          description: it.description,
+          quantity: it.quantity,
+          unit: it.unit,
+          unit_rate: it.unit_rate,
+          notes: it.notes,
+          position: i,
+        }));
+        await supabase.from('boq_items').insert(inserts);
+      }
+      await supabase.from('tenders').update({ status: 'reviewing' }).eq('id', tenderId);
+      setHasChanges(false);
+      if (showToast) toast.success('BOQ saved successfully');
+    } catch (err) {
+      toast.error('Failed to save BOQ');
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  }, [tenderId, items]);
+
+  // Auto-save every 30 seconds
+  useEffect(() => {
+    if (!hasChanges) return;
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveTimeout.current = setTimeout(async () => {
+      await saveBOQ(true);
+      setAutoSaveStatus('Auto-saved ✅');
+      setTimeout(() => setAutoSaveStatus(''), 3000);
+    }, 30000);
+    return () => {
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    };
+  }, [hasChanges, saveBOQ]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveBOQ(true);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        saveBOQ(true).then(() => navigate(`/purchase-order/${tenderId}`));
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [saveBOQ, navigate, tenderId]);
+
+  // Load data – FIXED with proper error handling
+  useEffect(() => {
     async function load() {
-      if (!tenderId) return;
-      const { data: t } = await supabase.from('tenders').select('*').eq('id', tenderId).maybeSingle();
-      setTender(t);
-      if (t) {
-        const { data: rows } = await supabase
+      if (!tenderId) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const { data: t, error: tErr } = await supabase
+          .from('tenders')
+          .select('*')
+          .eq('id', tenderId)
+          .maybeSingle();
+        if (tErr) throw tErr;
+        if (!t) {
+          toast.error('Tender not found');
+          navigate('/');
+          setLoading(false);
+          return;
+        }
+        setTender(t);
+        const { data: rows, error: rowsErr } = await supabase
           .from('boq_items')
           .select('*')
           .eq('tender_id', t.id)
           .order('position', { ascending: true });
+        if (rowsErr) throw rowsErr;
         if (rows && rows.length > 0) {
           setItems(rows.map((r: BOQItem) => ({
-            id: r.id, item_code: r.item_code, description: r.description,
-            quantity: Number(r.quantity), unit: r.unit, unit_rate: Number(r.unit_rate),
-            notes: r.notes, position: r.position,
+            id: r.id,
+            item_code: r.item_code,
+            description: r.description,
+            quantity: Number(r.quantity),
+            unit: r.unit,
+            unit_rate: Number(r.unit_rate),
+            notes: r.notes,
+            position: r.position,
           })));
         } else {
           setItems([{ ...emptyItem(), position: 0 }]);
         }
+      } catch (error) {
+        console.error('BOQ load error:', error);
+        toast.error('Failed to load BOQ');
+        navigate('/');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     load();
-  }, [tenderId]);
+  }, [tenderId, navigate]);
 
   const grandTotal = useMemo(
     () => items.reduce((sum, i) => sum + i.quantity * i.unit_rate, 0),
@@ -76,40 +172,39 @@ export default function BOQEditor() {
     setItems(prev => prev.map((it, i) =>
       i === index ? { ...it, [field]: field === 'quantity' || field === 'unit_rate' ? Number(value) || 0 : value } : it
     ));
+    setHasChanges(true);
   }
 
   function addRow() {
     setItems(prev => [...prev, { ...emptyItem(), position: prev.length }]);
+    setHasChanges(true);
   }
 
   function removeRow(index: number) {
     setItems(prev => prev.filter((_, i) => i !== index).map((it, i) => ({ ...it, position: i })));
+    setHasChanges(true);
   }
 
-  async function handleSave() {
-    if (!tenderId) return;
-    setSaving(true);
-    const validItems = items.filter(i => i.description.trim());
-
-    await supabase.from('boq_items').delete().eq('tender_id', tenderId);
-
-    if (validItems.length > 0) {
-      const inserts = validItems.map((it, i) => ({
-        tender_id: tenderId,
-        item_code: it.item_code,
-        description: it.description,
-        quantity: it.quantity,
-        unit: it.unit,
-        unit_rate: it.unit_rate,
-        notes: it.notes,
-        position: i,
-      }));
-      await supabase.from('boq_items').insert(inserts);
-    }
-
-    await supabase.from('tenders').update({ status: 'reviewing' }).eq('id', tenderId);
-    setSaving(false);
+  async function handleSaveAndProceed() {
+    await saveBOQ(true);
     navigate(`/purchase-order/${tenderId}`);
+  }
+
+  // CSV Export
+  function exportCSV() {
+    const header = 'Item Code,Description,Quantity,Unit,Rate,Total,Notes\n';
+    const rows = items.map(i =>
+      `${i.item_code},${i.description},${i.quantity},${i.unit},${i.unit_rate},${i.quantity * i.unit_rate},${i.notes}`
+    ).join('\n');
+    const csv = header + rows;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `BOQ_${tenderId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('CSV exported');
   }
 
   async function callCopilot() {
@@ -153,6 +248,7 @@ export default function BOQEditor() {
     setCopilotSuggestion(null);
     setCopilotPrompt('');
     setCopilotOpen(false);
+    setHasChanges(true);
   }
 
   if (loading) {
@@ -174,6 +270,8 @@ export default function BOQEditor() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
+      <ProgressBar step={2} />
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -184,7 +282,14 @@ export default function BOQEditor() {
           <h1 className="text-2xl font-bold text-[#f5f5f5]">Bill of Quantities</h1>
           <p className="text-sm text-[#a3a3a3] mt-1">{tender.title}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {autoSaveStatus && <span className="text-xs text-green-400">{autoSaveStatus}</span>}
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-1.5 text-xs text-[#525252] hover:text-[#f97316] transition-colors"
+          >
+            <Download size={14} /> Export CSV
+          </button>
           <button
             onClick={() => navigate(`/analysis/${tender.id}`)}
             className="flex items-center gap-1.5 text-xs text-[#525252] hover:text-[#f5f5f5] transition-colors"
@@ -205,7 +310,7 @@ export default function BOQEditor() {
           </div>
           <div className="text-left">
             <p className="text-sm font-medium text-[#f5f5f5]">AI Copilot — Generate BOQ Items</p>
-            <p className="text-xs text-[#525252] mt-0.5">Ask Gemini to extract or suggest line items from the tender</p>
+            <p className="text-xs text-[#525252] mt-0.5">Ask Groq to extract or suggest line items from the tender</p>
           </div>
         </div>
         <ArrowRight size={14} className="text-[#f97316]" />
@@ -312,13 +417,14 @@ export default function BOQEditor() {
 
       {/* Save & Continue */}
       <button
-        onClick={handleSave}
+        onClick={handleSaveAndProceed}
         disabled={saving}
         className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm bg-[#f97316] hover:bg-[#ea6c0a] text-white transition-colors disabled:opacity-50"
       >
         {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
         {saving ? 'Saving…' : 'Save & Create Purchase Order'}
       </button>
+      <p className="text-center text-[10px] text-[#525252] mt-2">Tip: Ctrl+S to save, Ctrl+Enter to proceed</p>
 
       {/* Copilot Drawer */}
       {copilotOpen && (
