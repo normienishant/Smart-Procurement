@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Loader2, X, Minimize2 } from 'lucide-react';
+import { Send, Sparkles, Loader2, X, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface Message {
@@ -152,119 +152,129 @@ export default function CopilotChat({ tenderId, tenderText }: CopilotChatProps) 
     sendMessage(question);
   };
 
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 p-3.5 rounded-full bg-[#f97316] hover:bg-[#ea6c0a] shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 transition-all duration-200 group"
-        aria-label="Open AI Assistant"
-      >
-        <div className="relative">
-          <Sparkles size={22} className="text-white group-hover:scale-110 transition-transform" />
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-[#0d0d0d] animate-pulse"></span>
-        </div>
-      </button>
-    );
-  }
-
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-full max-w-[420px] h-[560px] max-h-[80vh] bg-[#0d0d0d] border border-[#1c1c1c] rounded-2xl flex flex-col shadow-2xl pointer-events-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1c1c1c] bg-[#111111] rounded-t-2xl flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <Sparkles size={18} className="text-[#f97316]" />
-          <span className="text-sm font-semibold text-[#f5f5f5]">AI Assistant</span>
-          <span className="text-xs text-[#525252]">• Tender Q&A</span>
-        </div>
-        <button
-          onClick={() => setIsOpen(false)}
-          className="p-1 rounded-md hover:bg-[#ffffff10] text-[#525252] hover:text-[#f5f5f5] transition-colors"
-          aria-label="Minimize chat"
-        >
-          <Minimize2 size={16} />
-        </button>
-      </div>
+    <>
+      {/* Vertical Handle – always visible on right side */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`fixed right-0 top-1/2 -translate-y-1/2 z-40 flex items-center gap-2 px-3 py-3 rounded-l-xl bg-[#f97316] hover:bg-[#ea6c0a] text-white shadow-lg transition-all duration-300 ${
+          isOpen ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'
+        }`}
+        style={{ writingMode: 'vertical-rl' }}
+        aria-label="Toggle AI Assistant"
+      >
+        <Sparkles size={16} className="rotate-90" />
+        <span className="text-[10px] font-medium tracking-wider">AI Assistant</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+      </button>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[85%] px-4 py-2.5 rounded-xl text-sm ${
-                msg.role === 'user'
-                  ? 'bg-[#f97316] text-white'
-                  : 'bg-[#1a1a1a] border border-[#242424] text-[#d4d4d4]'
-              }`}
-              style={{ whiteSpace: 'pre-wrap' }}
-            >
-              {msg.content}
-              <div className={`text-[9px] mt-1 ${msg.role === 'user' ? 'text-orange-200' : 'text-[#525252]'}`}>
-                {msg.timestamp.toLocaleTimeString()}
-              </div>
+      {/* Chat Panel – slides in from right */}
+      <div
+        className={`fixed right-0 top-0 h-full w-[420px] max-w-[90vw] z-50 bg-[#0d0d0d] border-l border-[#1c1c1c] shadow-2xl transition-transform duration-300 ease-in-out flex flex-col ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c1c1c] bg-[#111111] flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#f97316]/10 flex items-center justify-center">
+              <Sparkles size={18} className="text-[#f97316]" />
+            </div>
+            <div>
+              <span className="text-sm font-semibold text-[#f5f5f5]">AI Assistant</span>
+              <span className="text-[10px] text-[#525252] block -mt-0.5">Tender Q&A</span>
             </div>
           </div>
-        ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-[#1a1a1a] border border-[#242424] rounded-xl px-4 py-3">
-              <Loader2 size={18} className="animate-spin text-[#f97316]" />
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* 🔥 Suggestions – Natural Wrap, No Scroll */}
-      <div className="px-4 pb-2">
-        {loadingSuggestions ? (
-          <div className="flex items-center gap-2 text-xs text-[#525252]">
-            <Loader2 size={12} className="animate-spin" />
-            Generating suggestions...
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {suggestions.map((question, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSuggestionClick(question)}
-                disabled={loading}
-                className="px-2.5 py-1 text-[10px] bg-[#1a1a1a] border border-[#242424] rounded text-[#a3a3a3] hover:border-[#f97316]/50 hover:text-[#f5f5f5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {question}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Input */}
-      <div className="p-4 border-t border-[#1c1c1c] bg-[#111111] rounded-b-2xl flex-shrink-0">
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about the tender..."
-            rows={1}
-            className="flex-1 px-4 py-2.5 rounded-xl bg-[#0d0d0d] border border-[#242424] text-sm text-[#f5f5f5] placeholder-[#3a3a3a] focus:outline-none focus:border-[#f97316]/50 resize-none min-h-[44px] max-h-32"
-            disabled={loading}
-          />
           <button
-            onClick={() => sendMessage()}
-            disabled={!input.trim() || loading}
-            className="p-2.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0a] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+            onClick={() => setIsOpen(false)}
+            className="p-1.5 rounded-md hover:bg-[#ffffff10] text-[#525252] hover:text-[#f5f5f5] transition-colors"
+            aria-label="Close chat"
           >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+            <X size={18} />
           </button>
         </div>
-        <p className="text-[10px] text-[#525252] mt-1.5 text-center">
-          Powered by AI · Answers based on the tender document only
-        </p>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[88%] px-4 py-2.5 rounded-xl text-sm ${
+                  msg.role === 'user'
+                    ? 'bg-[#f97316] text-white'
+                    : 'bg-[#1a1a1a] border border-[#242424] text-[#d4d4d4]'
+                }`}
+                style={{ whiteSpace: 'pre-wrap' }}
+              >
+                {msg.content}
+                <div className={`text-[9px] mt-1 ${msg.role === 'user' ? 'text-orange-200' : 'text-[#525252]'}`}>
+                  {msg.timestamp.toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-[#1a1a1a] border border-[#242424] rounded-xl px-4 py-3">
+                <Loader2 size={18} className="animate-spin text-[#f97316]" />
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Suggestions – Natural Wrap */}
+        <div className="px-4 pb-2">
+          {loadingSuggestions ? (
+            <div className="flex items-center gap-2 text-xs text-[#525252]">
+              <Loader2 size={12} className="animate-spin" />
+              Generating suggestions...
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((question, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSuggestionClick(question)}
+                  disabled={loading}
+                  className="px-2.5 py-1 text-[10px] bg-[#1a1a1a] border border-[#242424] rounded text-[#a3a3a3] hover:border-[#f97316]/50 hover:text-[#f5f5f5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Input */}
+        <div className="p-4 border-t border-[#1c1c1c] bg-[#111111] flex-shrink-0">
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about the tender..."
+              rows={1}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[#0d0d0d] border border-[#242424] text-sm text-[#f5f5f5] placeholder-[#3a3a3a] focus:outline-none focus:border-[#f97316]/50 resize-none min-h-[44px] max-h-32"
+              disabled={loading}
+            />
+            <button
+              onClick={() => sendMessage()}
+              disabled={!input.trim() || loading}
+              className="p-2.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0a] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+            >
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+            </button>
+          </div>
+          <p className="text-[10px] text-[#525252] mt-2 text-center">
+            Powered by AI · Answers based on the tender document only
+          </p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
