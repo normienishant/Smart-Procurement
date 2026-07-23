@@ -4,7 +4,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-// 🔥 More models to avoid rate limits
 const MODELS = [
   "llama-3.3-70b-versatile",
   "gemma2-9b-it",
@@ -17,11 +16,11 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { tenderText, question } = await req.json();
+    const { tenderText } = await req.json();
 
-    if (!tenderText || !question) {
+    if (!tenderText) {
       return new Response(
-        JSON.stringify({ error: "Missing tenderText or question." }),
+        JSON.stringify({ error: "Missing tenderText." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -34,27 +33,36 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemPrompt = `You are a procurement assistant. Answer the user's question based ONLY on the provided tender document. If the answer is not in the document, say "I couldn't find this information in the document." Provide a concise, accurate answer.
+    // 🔥 Prompt asks for short, concise questions (5-7 words)
+    const systemPrompt = `You are a procurement assistant. Based on the following tender document, generate 5 short, concise questions (5-7 words each) that a user might ask to understand the tender better. The questions should cover the most important aspects like scope, deadlines, eligibility, technical specs, clauses, etc. Return ONLY a JSON object with a "suggestions" key that is an array of 5 strings.
+
+Example: {"suggestions": ["What is the scope of work?", "What are the key deadlines?", "What are the eligibility requirements?", "What are the important clauses?", "What is the payment terms?"]}
 
 Tender Document:
-${tenderText.slice(0, 25000)}`;
-
-    const userPrompt = `Question: ${question}`;
+${tenderText.slice(0, 15000)}`;
 
     const url = "https://api.groq.com/openai/v1/chat/completions";
     let lastError: any = null;
+    const defaultSuggestions = [
+      "What is the scope of work?",
+      "What are the key deadlines?",
+      "What are the eligibility requirements?",
+      "What are the important clauses?",
+      "What is the payment terms?",
+    ];
 
     for (const model of MODELS) {
       try {
-        console.log(`🔄 Chat trying model: ${model}`);
+        console.log(`🔄 Suggestions trying model: ${model}`);
         const body = {
           model: model,
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
+            { role: "user", content: "Generate 5 short questions as a JSON object with key 'suggestions'." }
           ],
           temperature: 0.3,
-          max_tokens: 1024,
+          max_tokens: 512,
+          response_format: { type: "json_object" },
         };
 
         const groqRes = await fetch(url, {
@@ -68,7 +76,7 @@ ${tenderText.slice(0, 25000)}`;
 
         if (groqRes.status === 429) {
           const errText = await groqRes.text().catch(() => "");
-          console.warn(`⚠️ Chat model ${model} rate limited: ${errText.slice(0, 200)}`);
+          console.warn(`⚠️ Suggestions model ${model} rate limited: ${errText.slice(0, 200)}`);
           lastError = new Error(`Rate limit for ${model}`);
           continue;
         }
@@ -76,7 +84,7 @@ ${tenderText.slice(0, 25000)}`;
         if (!groqRes.ok) {
           const errText = await groqRes.text().catch(() => "");
           if (groqRes.status === 400 && errText.includes("model")) {
-            console.warn(`⚠️ Chat model ${model} not available`);
+            console.warn(`⚠️ Suggestions model ${model} not available`);
             lastError = new Error(`Model ${model} unavailable`);
             continue;
           }
@@ -84,16 +92,28 @@ ${tenderText.slice(0, 25000)}`;
         }
 
         const groqData = await groqRes.json();
-        const answer = groqData?.choices?.[0]?.message?.content ?? "I couldn't generate an answer.";
+        const rawText = groqData?.choices?.[0]?.message?.content ?? "{}";
+
+        let suggestions: string[];
+        try {
+          const parsed = JSON.parse(rawText);
+          if (parsed.suggestions && Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
+            suggestions = parsed.suggestions.slice(0, 5);
+          } else {
+            suggestions = defaultSuggestions;
+          }
+        } catch {
+          suggestions = defaultSuggestions;
+        }
 
         return new Response(
-          JSON.stringify({ answer }),
+          JSON.stringify({ suggestions }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
 
       } catch (err: any) {
         if (err.message && (err.message.includes("Rate limit") || err.message.includes("unavailable") || err.message.includes("decommissioned"))) {
-          console.warn(`⚠️ Chat model ${model} failed: ${err.message}`);
+          console.warn(`⚠️ Suggestions model ${model} failed: ${err.message}`);
           lastError = err;
           continue;
         }
@@ -101,11 +121,9 @@ ${tenderText.slice(0, 25000)}`;
       }
     }
 
-    // 🔥 Fallback: return a generic answer when all models fail
+    // 🔥 Fallback: return default suggestions
     return new Response(
-      JSON.stringify({ 
-        answer: "I'm currently unable to answer due to high demand. Please try again in a few minutes, or rephrase your question." 
-      }),
+      JSON.stringify({ suggestions: defaultSuggestions }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

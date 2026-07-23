@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Loader2, X, Minimize2, MessageCircle } from 'lucide-react';
+import { Send, Sparkles, Loader2, X, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface Message {
@@ -14,9 +14,9 @@ interface CopilotChatProps {
   tenderText: string;
 }
 
-const SUGGESTIONS = [
-  "Summarize the scope of work.",
-  "What are the key deadlines and milestones?",
+const DEFAULT_SUGGESTIONS = [
+  "What is the scope of work?",
+  "What are the key deadlines?",
   "What are the eligibility requirements?",
   "What are the important clauses?",
   "What is the payment terms?",
@@ -34,8 +34,41 @@ export default function CopilotChat({ tenderId, tenderText }: CopilotChatProps) 
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (isOpen && tenderText && suggestions === DEFAULT_SUGGESTIONS) {
+      fetchSuggestions();
+    }
+  }, [isOpen, tenderText]);
+
+  const fetchSuggestions = async () => {
+    setLoadingSuggestions(true);
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tender-suggestions`;
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ tenderText }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+          setSuggestions(data.suggestions.slice(0, 5));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch dynamic suggestions, using defaults.', e);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -119,7 +152,6 @@ export default function CopilotChat({ tenderId, tenderText }: CopilotChatProps) 
     sendMessage(question);
   };
 
-  // Floating button (minimized state)
   if (!isOpen) {
     return (
       <button
@@ -135,7 +167,6 @@ export default function CopilotChat({ tenderId, tenderText }: CopilotChatProps) 
     );
   }
 
-  // Full chat window (opened state)
   return (
     <div className="fixed bottom-6 right-6 z-50 w-full max-w-[420px] h-[560px] max-h-[80vh] bg-[#0d0d0d] border border-[#1c1c1c] rounded-2xl flex flex-col shadow-2xl pointer-events-auto">
       {/* Header */}
@@ -145,15 +176,13 @@ export default function CopilotChat({ tenderId, tenderText }: CopilotChatProps) 
           <span className="text-sm font-semibold text-[#f5f5f5]">AI Assistant</span>
           <span className="text-xs text-[#525252]">• Tender Q&A</span>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setIsOpen(false)}
-            className="p-1 rounded-md hover:bg-[#ffffff10] text-[#525252] hover:text-[#f5f5f5] transition-colors"
-            aria-label="Minimize chat"
-          >
-            <Minimize2 size={16} />
-          </button>
-        </div>
+        <button
+          onClick={() => setIsOpen(false)}
+          className="p-1 rounded-md hover:bg-[#ffffff10] text-[#525252] hover:text-[#f5f5f5] transition-colors"
+          aria-label="Minimize chat"
+        >
+          <Minimize2 size={16} />
+        </button>
       </div>
 
       {/* Messages */}
@@ -188,18 +217,27 @@ export default function CopilotChat({ tenderId, tenderText }: CopilotChatProps) 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestions */}
-      <div className="px-4 pb-2 flex flex-wrap gap-1.5">
-        {SUGGESTIONS.map((question, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleSuggestionClick(question)}
-            disabled={loading}
-            className="px-2.5 py-1 text-[10px] bg-[#1a1a1a] border border-[#242424] rounded-full text-[#a3a3a3] hover:border-[#f97316]/50 hover:text-[#f5f5f5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {question}
-          </button>
-        ))}
+      {/* 🔥 Suggestions – Natural Wrap, No Scroll */}
+      <div className="px-4 pb-2">
+        {loadingSuggestions ? (
+          <div className="flex items-center gap-2 text-xs text-[#525252]">
+            <Loader2 size={12} className="animate-spin" />
+            Generating suggestions...
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {suggestions.map((question, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleSuggestionClick(question)}
+                disabled={loading}
+                className="px-2.5 py-1 text-[10px] bg-[#1a1a1a] border border-[#242424] rounded text-[#a3a3a3] hover:border-[#f97316]/50 hover:text-[#f5f5f5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {question}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Input */}
