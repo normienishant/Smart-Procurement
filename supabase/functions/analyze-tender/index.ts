@@ -38,79 +38,63 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemPrompt = `You are a world-class procurement analyst and AI extraction specialist. Your task is to extract structured data from the RFP/Tender document with 100% accuracy.
+    const systemPrompt = `You are a world-class procurement analyst and AI extraction specialist. Extract structured data from the RFP/Tender with 100% accuracy.
 
-**CRITICAL DISTINCTION – MANDATORY vs SCORING**:
-- Many RFPs contain "Scoring Criteria" (e.g., "Greater than INR 50 Crore – 5 marks"). These are NOT mandatory requirements.
-- Only extract a field as a requirement if the document explicitly says:
-  - "Minimum turnover of ₹X Crore is required", "Bidder must have turnover of ₹X", "Eligibility criteria: Turnover of ₹X".
-  - "Minimum experience of X years is required", "Bidder must have executed X projects".
+**CRITICAL RULES – MANDATORY vs SCORING**:
+- Scoring criteria (e.g., "Greater than INR 50 Crore – 5 marks") are NOT mandatory requirements.
+- Only extract if the document explicitly says:
+  - "Minimum turnover of ₹X is required", "Bidder must have turnover of ₹X"
+  - "Minimum experience of X years is required", "Bidder must have executed X projects"
+  - "Eligibility criteria: ..."
 
 **EXTRACTION RULES**:
 
-1. **basicDetails**:
-   - Extract exactly as stated. If a field is not found, use empty string or 0.
+1. **client_name**:
+   - ❗ONLY extract if there is a SPECIFIC organization name (e.g., "Department of Education", "Maharashtra Water Supply Authority", "DoE, GNCTD", "PWD").
+   - If it's a generic phrase like "Government/Public Sector organization/institute", set to "" (empty).
 
-2. **client_name**:
-   - ❗ONLY extract if there is a SPECIFIC client name (e.g., "Department of Education", "Maharashtra Water Supply Authority", "DoE, GNCTD").
-   - If it's a generic phrase like "Government/Public Sector organization/institute", set to EMPTY string.
+2. **project_name**:
+   - Extract from the document title, header, or "Project Name:" field.
+   - Look for "RFP for", "Tender for", "Project Name:", "Scope:".
+   - If found, extract the exact project name.
 
-3. **project_name, project_location**:
-   - Extract exact project name. If location not found, use "Not specified".
+3. **project_location**:
+   - Look for "Location:", "Place of Work:", "City:".
+   - If not found, use "Not specified".
 
 4. **scope_of_work**:
-   - ❗Extract the COMPLETE scope. This includes:
-     - Part-A: Supply, Integration, and Cloud Deployment of the system
-     - Part-B: Annual software maintenance and server hosting
-   - If there's a bullet list, include all points. Use exact wording.
+   - ❗Extract the COMPLETE scope from the document.
+   - If there's a Part-A and Part-B (e.g., Supply/Integration/Deployment AND Maintenance/Hosting), include BOTH.
+   - Be exhaustive – include all services, deliverables, and responsibilities.
 
-5. **materials_required**:
-   - Extract any materials, software, equipment, or items explicitly listed.
-   - If not mentioned, return empty array.
+5. **payment_terms**:
+   - ❗ONLY extract if the document explicitly mentions payment milestones, percentages, or schedule (e.g., "80% on completion", "Hybrid Annuity Model", "Payment milestones: ...").
+   - Do NOT extract "exclusive of taxes" – this is a tax clause, not payment terms.
+   - If not explicitly mentioned, use empty string.
 
-6. **deadlines_milestones**:
-   - Extract exact dates if available.
-   - If no dates, return empty array.
-
-7. **risks_penalties**:
-   - Extract ONLY if explicitly mentioned.
-   - If not mentioned, return empty array.
-
-8. **payment_terms**:
-   - ❗ONLY extract if the document explicitly mentions payment terms (e.g., "80% on completion", "Hybrid Annuity Model", "Payment milestones").
-   - Do NOT duplicate from Important Clauses. If not explicitly mentioned, use empty string.
-   - ❗Important: If document says "The above costs shall be exclusive of all taxes" – this is NOT payment terms.
-
-9. **eligibilityRequirements** (MANDATORY ONLY – DO NOT INCLUDE SCORING CRITERIA):
+6. **eligibilityRequirements** (MANDATORY ONLY – NO SCORING):
    - turnover_required: ❗ONLY if "Minimum turnover of ₹X is required" explicitly stated.
-   - experience_required: ❗Extract mandatory minimum years or projects from BIDDER (System Integrator) section. Look for "Experience in completing large assignments" or "Years of Experience working with Govt". If it's scoring, set to "".
-   - oem_authorization_needed: true only if explicitly required.
-   - maf_required: true only if explicitly stated.
+   - experience_required: ❗ONLY if the document explicitly states a minimum experience requirement (e.g., "Minimum 5 years of experience is required").
+     - If it's from a scoring table (e.g., "Experience of more than 5 Years – 5 marks"), set to "".
+   - oem_authorization_needed: true if explicitly required.
+   - maf_required: true if explicitly required.
    - iso_certificates_required: extract only if explicitly required.
    - msme_benefits: true if explicitly available.
    - startup_exemption: true if explicitly available.
    - pan: true if explicitly required.
    - gst: true if explicitly required.
    - itr: true if explicitly required.
-   - balance_sheet: true if "Audited Balance Sheets" is explicitly required.
-   - ca_certificate: true if "CA Certificate" is explicitly required.
+   - balance_sheet: true if explicitly required.
+   - ca_certificate: true if explicitly required.
 
-10. **technicalSpecs**:
-    - Extract table or list of specifications.
-    - Use { spec, value, unit } format.
+7. **importantClauses**:
+   - MUST include ALL 8 clauses.
+   - For Payment Terms clause, use the SAME text as payment_terms (or "Not explicitly stated" if empty).
+   - Do NOT put "exclusive of taxes" here – that is NOT payment terms.
 
-11. **importantClauses**:
-    - MUST include ALL 8 clause names.
-    - If a clause text is NOT explicitly found, set text to "Not explicitly stated".
-    - ❗Payment Terms clause should ONLY contain the actual payment terms from the document, NOT duplicated from the payment_terms field.
+8. **boqItems**: Generate from materials/scope if no explicit BOQ.
 
-12. **boqItems**:
-    - If document has BOQ, extract exactly.
-    - If no explicit BOQ, derive from materials/scope.
-    - At least 3 items, max 15.
-    - If truly no items exist, return empty array.
-
-Return ONLY valid JSON with these exact top-level keys:
+Return ONLY valid JSON with these exact keys:
 {
   "basicDetails": { ... },
   "client_name": "",
@@ -149,7 +133,7 @@ Return ONLY valid JSON with these exact top-level keys:
   "boqItems": []
 }
 
-Use empty strings, empty arrays, or false for missing data. Do NOT hallucinate payment terms or any other data. Return ONLY valid JSON.`;
+Return ONLY valid JSON. No explanations, no markdown.`;
 
     const url = "https://api.groq.com/openai/v1/chat/completions";
     const truncatedText = text.length > MAX_TEXT_LENGTH 
