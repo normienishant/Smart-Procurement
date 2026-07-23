@@ -6,12 +6,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-// 🔥 Multi-model fallback
+// 🔥 Multi-model fallback (primary: llama-3.3-70b has higher TPM limit)
 const MODELS = [
   "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
   "gemma2-9b-it",
+  "llama-3.1-8b-instant",
 ];
+
+// 🔥 Safe text length to avoid token limits (15000 chars ~ 3750 tokens)
+const MAX_TEXT_LENGTH = 15000;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -35,7 +38,11 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 🔥 IMPROVED PROMPT – BOQ generation from materials
+    // 🔥 Truncate text if too long
+    const truncatedText = text.length > MAX_TEXT_LENGTH 
+      ? text.slice(0, MAX_TEXT_LENGTH) + "\n\n[... document truncated to fit token limits]" 
+      : text;
+
     const systemPrompt = `You are an expert procurement analyst for construction and infrastructure tenders. Extract ALL the following structured information from the tender document. Return a valid JSON object with EVERY key listed below.
 
 **CRITICAL RULES**:
@@ -49,7 +56,7 @@ Deno.serve(async (req: Request) => {
 8. **boqItems**: 🔥 IMPORTANT – You MUST generate BOQ items from the tender. If the document has a BOQ table, extract it. If not, derive BOQ items from:
    - The "Materials Required" list (use each material as an item)
    - The "Scope of Work" (infer materials and quantities)
-   - Use realistic quantities based on project scale (e.g., for a 12 km pipeline, estimate pipe lengths, etc.)
+   - Use realistic quantities based on project scale
    - Use realistic Indian market rates
    - Each item must have: item_code, description, quantity, unit, unit_rate, notes
    - At least 3 items, maximum 15 items
@@ -114,10 +121,10 @@ Use empty strings, empty arrays, or false for missing data. Return ONLY valid JS
           model: model,
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: `--- DOCUMENT TEXT ---\n${text.slice(0, 30000)}` }
+            { role: "user", content: `--- DOCUMENT TEXT ---\n${truncatedText}` }
           ],
           temperature: 0.2,
-          max_tokens: 4096,
+          max_tokens: 2048,
           response_format: { type: "json_object" },
         };
 
