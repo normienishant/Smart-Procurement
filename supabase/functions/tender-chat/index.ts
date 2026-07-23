@@ -4,12 +4,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-// 🔥 More models to avoid rate limits
+// 🔥 Primary model: llama-3.1-8b-instant (fast, low token usage)
+// Fallback: gemma2-9b-it
 const MODELS = [
-  "llama-3.3-70b-versatile",
-  "gemma2-9b-it",
   "llama-3.1-8b-instant",
+  "gemma2-9b-it",
+  "llama-3.3-70b-versatile", // last resort
 ];
+
+// 🔥 Simple in-memory cache (per function instance)
+const cache = new Map<string, { answer: string; timestamp: number }>();
+const CACHE_TTL = 3600; // 1 hour
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -34,7 +39,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemPrompt = `You are a procurement assistant. Answer the user's question based ONLY on the provided tender document. If the answer is not in the document, say "I couldn't find this information in the document." Provide a concise, accurate answer.
+    // 🔥 Check cache
+    const cacheKey = `${tenderText.slice(0, 100)}:${question}`;
+    const cached = cache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL * 1000) {
+      return new Response(
+        JSON.stringify({ answer: cached.answer }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const systemPrompt = `You are a procurement assistant. Answer the user's question based ONLY on the provided tender document. If the answer is not in the document, say "I couldn't find this information in the document." Provide a concise, accurate answer (max 3 sentences).
 
 Tender Document:
 ${tenderText.slice(0, 25000)}`;
@@ -43,6 +58,7 @@ ${tenderText.slice(0, 25000)}`;
 
     const url = "https://api.groq.com/openai/v1/chat/completions";
     let lastError: any = null;
+    let finalAnswer = "I'm currently unable to answer due to high demand. Please try again in a few minutes, or rephrase your question.";
 
     for (const model of MODELS) {
       try {
@@ -53,8 +69,8 @@ ${tenderText.slice(0, 25000)}`;
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }
           ],
-          temperature: 0.3,
-          max_tokens: 1024,
+          temperature: 0.2, // lower temperature for consistency
+          max_tokens: 256, // reduced from 1024 to save tokens
         };
 
         const groqRes = await fetch(url, {
@@ -86,10 +102,10 @@ ${tenderText.slice(0, 25000)}`;
         const groqData = await groqRes.json();
         const answer = groqData?.choices?.[0]?.message?.content ?? "I couldn't generate an answer.";
 
-        return new Response(
-          JSON.stringify({ answer }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        finalAnswer = answer;
+        // Cache the answer
+        cache.set(cacheKey, { answer: finalAnswer, timestamp: Date.now() });
+        break; // success
 
       } catch (err: any) {
         if (err.message && (err.message.includes("Rate limit") || err.message.includes("unavailable") || err.message.includes("decommissioned"))) {
@@ -101,11 +117,8 @@ ${tenderText.slice(0, 25000)}`;
       }
     }
 
-    // 🔥 Fallback: return a generic answer when all models fail
     return new Response(
-      JSON.stringify({ 
-        answer: "I'm currently unable to answer due to high demand. Please try again in a few minutes, or rephrase your question." 
-      }),
+      JSON.stringify({ answer: finalAnswer }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
