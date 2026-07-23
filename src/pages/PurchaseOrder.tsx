@@ -87,20 +87,75 @@ export default function PurchaseOrder() {
     );
   }
 
+  // 🔥 SUBMITTED PAGE – with printable content
   if (submitted) {
     return (
       <div className="p-8 max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center mb-5">
-          <CheckCircle2 size={32} className="text-green-400" />
+        <div id="printable-po" className="w-full">
+          {/* Print Styles for submitted page */}
+          <style>{`
+            @media print {
+              body * { visibility: hidden !important; }
+              #printable-po, #printable-po * { visibility: visible !important; }
+              #printable-po { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; color: black !important; padding: 40px !important; }
+              .no-print { display: none !important; }
+            }
+          `}</style>
+
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center mx-auto mb-5">
+              <CheckCircle2 size={32} className="text-green-400" />
+            </div>
+            <h1 className="text-xl font-bold text-[#f5f5f5] mb-2">Purchase Order Submitted</h1>
+            <p className="text-sm text-[#a3a3a3] text-center mb-1">
+              PO <span className="font-mono text-[#f97316]">{po.poNumber}</span> has been generated and marked as submitted.
+            </p>
+            <p className="text-xs text-[#525252] mb-6">
+              Total value: {totalWithGST.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}
+            </p>
+          </div>
+
+          {/* BOQ Summary Table */}
+          {items.length > 0 && (
+            <div className="mt-6 border-t border-[#1c1c1c] pt-4">
+              <h3 className="text-sm font-semibold text-[#f5f5f5] mb-3">BOQ Summary</h3>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#1c1c1c]">
+                    <th className="text-left py-2 text-[#525252]">Item</th>
+                    <th className="text-right py-2 text-[#525252]">Qty</th>
+                    <th className="text-right py-2 text-[#525252]">Rate</th>
+                    <th className="text-right py-2 text-[#525252]">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.slice(0, 5).map((item) => (
+                    <tr key={item.id} className="border-b border-[#1c1c1c] last:border-0">
+                      <td className="py-2 text-[#d4d4d4]">{item.description}</td>
+                      <td className="py-2 text-right text-[#d4d4d4]">{item.quantity}</td>
+                      <td className="py-2 text-right text-[#d4d4d4]">₹{Number(item.unit_rate).toLocaleString()}</td>
+                      <td className="py-2 text-right text-[#d4d4d4]">₹{Number(item.total_amount).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  {items.length > 5 && (
+                    <tr>
+                      <td colSpan={4} className="py-2 text-center text-[#525252] text-xs">+ {items.length - 5} more items</td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-[#1c1c1c] font-bold">
+                    <td colSpan={3} className="py-2 text-right text-[#f5f5f5]">Grand Total</td>
+                    <td className="py-2 text-right text-[#f97316]">₹{totalWithGST.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
         </div>
-        <h1 className="text-xl font-bold text-[#f5f5f5] mb-2">Purchase Order Submitted</h1>
-        <p className="text-sm text-[#a3a3a3] text-center mb-1">
-          PO <span className="font-mono text-[#f97316]">{po.poNumber}</span> has been generated and marked as submitted.
-        </p>
-        <p className="text-xs text-[#525252] mb-6">
-          Total value: {totalWithGST.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}
-        </p>
-        <div className="flex gap-3">
+
+        {/* Buttons – Hidden in print */}
+        <div className="flex flex-wrap gap-3 mt-6 no-print">
           <button
             onClick={() => navigate('/')}
             className="px-5 py-2.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0a] text-white text-sm font-medium transition-colors"
@@ -124,61 +179,29 @@ export default function PurchaseOrder() {
     );
   }
 
+  // 🔥 MAIN PO PAGE (before submit)
   return (
     <div className="p-8 max-w-5xl mx-auto">
       {/* Print Styles */}
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-po, #printable-po * {
-            visibility: visible !important;
-          }
-          #printable-po {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            background: white !important;
-            color: black !important;
-            padding: 20px !important;
-          }
-          #printable-po .bg-\\[\\#111111\\] {
-            background: white !important;
-            border-color: #ddd !important;
-          }
-          #printable-po .bg-\\[\\#0d0d0d\\] {
-            background: #f5f5f5 !important;
-            border-color: #ddd !important;
-          }
-          #printable-po .text-\\[\\#f5f5f5\\] {
-            color: black !important;
-          }
-          #printable-po .text-\\[\\#a3a3a3\\] {
-            color: #555 !important;
-          }
-          #printable-po .text-\\[\\#525252\\] {
-            color: #666 !important;
-          }
-          #printable-po .text-\\[\\#d4d4d4\\] {
-            color: #222 !important;
-          }
-          #printable-po .border-\\[\\#1c1c1c\\] {
-            border-color: #ddd !important;
-          }
-          #printable-po .border-\\[\\#242424\\] {
-            border-color: #ddd !important;
-          }
-          .no-print {
-            display: none !important;
-          }
+          body * { visibility: hidden !important; }
+          #printable-po, #printable-po * { visibility: visible !important; }
+          #printable-po { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; color: black !important; padding: 20px !important; }
+          #printable-po .bg-\\[\\#111111\\] { background: white !important; border-color: #ddd !important; }
+          #printable-po .bg-\\[\\#0d0d0d\\] { background: #f5f5f5 !important; border-color: #ddd !important; }
+          #printable-po .text-\\[\\#f5f5f5\\] { color: black !important; }
+          #printable-po .text-\\[\\#a3a3a3\\] { color: #555 !important; }
+          #printable-po .text-\\[\\#525252\\] { color: #666 !important; }
+          #printable-po .text-\\[\\#d4d4d4\\] { color: #222 !important; }
+          #printable-po .border-\\[\\#1c1c1c\\] { border-color: #ddd !important; }
+          #printable-po .border-\\[\\#242424\\] { border-color: #ddd !important; }
+          .no-print { display: none !important; }
         }
       `}</style>
 
       <ProgressBar step={3} />
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-6 no-print">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -196,14 +219,12 @@ export default function PurchaseOrder() {
         </button>
       </div>
 
-      {/* PO Content – Printable Area */}
       <div id="printable-po">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Left: PO Form */}
           <div className="lg:col-span-1 space-y-4 no-print">
             <div className="rounded-xl border border-[#1c1c1c] bg-[#111111] p-5">
               <p className="text-xs font-semibold uppercase tracking-widest text-[#f5f5f5] mb-4">PO Details</p>
-
               <div className="space-y-3">
                 <div>
                   <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#525252] mb-1.5">PO Number</label>
@@ -252,16 +273,12 @@ export default function PurchaseOrder() {
                 </div>
               </div>
             </div>
-
-            {/* Tender Summary */}
             {analysis && (
               <div className="rounded-xl border border-[#1c1c1c] bg-[#111111] p-5">
                 <p className="text-xs font-semibold uppercase tracking-widest text-[#f5f5f5] mb-3">Tender Summary</p>
-                <div className="space-y-2">
-                  <SummaryRow icon={<Building2 size={12} />} label="Client" value={analysis.client_name} />
-                  <SummaryRow icon={<FileText size={12} />} label="Project" value={analysis.project_name} />
-                  <SummaryRow icon={<Calendar size={12} />} label="Location" value={analysis.project_location} />
-                </div>
+                <SummaryRow icon={<Building2 size={12} />} label="Client" value={analysis.client_name} />
+                <SummaryRow icon={<FileText size={12} />} label="Project" value={analysis.project_name} />
+                <SummaryRow icon={<Calendar size={12} />} label="Location" value={analysis.project_location} />
               </div>
             )}
           </div>
@@ -269,7 +286,6 @@ export default function PurchaseOrder() {
           {/* Right: PO Preview */}
           <div className="lg:col-span-2">
             <div className="rounded-xl border border-[#1c1c1c] bg-[#111111] overflow-hidden">
-              {/* PO Header */}
               <div className="p-5 border-b border-[#1c1c1c] bg-[#0d0d0d]">
                 <div className="flex items-start justify-between">
                   <div>
@@ -289,7 +305,6 @@ export default function PurchaseOrder() {
                 )}
               </div>
 
-              {/* Items Table */}
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-[#1c1c1c]">
@@ -328,7 +343,6 @@ export default function PurchaseOrder() {
                 </tbody>
               </table>
 
-              {/* Totals */}
               {items.length > 0 && (
                 <div className="p-5 border-t border-[#1c1c1c] bg-[#0d0d0d]">
                   <div className="flex justify-end items-center gap-8">
@@ -361,7 +375,6 @@ export default function PurchaseOrder() {
               )}
             </div>
 
-            {/* Buttons */}
             {items.length > 0 && (
               <div className="flex flex-wrap gap-3 mt-4 no-print">
                 <button
@@ -382,7 +395,7 @@ export default function PurchaseOrder() {
                   className="flex-1 py-3.5 rounded-xl font-semibold text-sm bg-[#f97316] hover:bg-[#ea6c0a] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {submitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                  {submitting ? 'Submitting…' : !po.vendorName.trim() ? 'Enter vendor name to submit' : 'Submit Purchase Order'}
+                  {submitting ? 'Submitting…' : !po.vendorName.trim() ? 'Enter vendor name' : 'Submit Purchase Order'}
                 </button>
               </div>
             )}
@@ -393,7 +406,6 @@ export default function PurchaseOrder() {
   );
 }
 
-// Helper Component
 function SummaryRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-center gap-2">

@@ -4,15 +4,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-interface CopilotItem {
-  item_code: string;
-  description: string;
-  quantity: number;
-  unit: string;
-  unit_rate: number;
-  notes: string;
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -36,8 +27,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemPrompt = `You are a procurement BOQ assistant for a trenchless engineering company.
-Based on the user's request and the tender document, generate Bill of Quantities line items.
+    const systemPrompt = `You are a procurement BOQ assistant. Based on the user's request and the tender document, generate Bill of Quantities line items.
 
 Return ONLY a valid JSON array of objects with these exact keys:
 [
@@ -67,15 +57,17 @@ ${JSON.stringify(currentItems ?? [], null, 2)}
 ${prompt}`;
 
     const url = "https://api.groq.com/openai/v1/chat/completions";
+    const model = "llama-3.1-8b-instant";
+
     const body = {
-      model: "llama-3.3-70b-versatile",
+      model: model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: context }
       ],
       temperature: 0.4,
       max_tokens: 2048,
-      response_format: { type: "json_object" },
+      // 🔥 No response_format – this model returns JSON reliably without it
     };
 
     const groqRes = await fetch(url, {
@@ -89,37 +81,30 @@ ${prompt}`;
 
     if (!groqRes.ok) {
       const errText = await groqRes.text().catch(() => "");
-      return new Response(
-        JSON.stringify({ error: `Groq API error (${groqRes.status}): ${errText.slice(0, 500)}` }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error(`Groq API error (${groqRes.status}): ${errText.slice(0, 500)}`);
     }
 
     const groqData = await groqRes.json();
     const rawText = groqData?.choices?.[0]?.message?.content ?? "[]";
 
-    let items: CopilotItem[];
+    let items: any[];
     try {
-      items = JSON.parse(rawText);
-    } catch {
+      // Try to extract JSON array
       const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        return new Response(
-          JSON.stringify({ error: "AI did not return valid JSON." }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (jsonMatch) {
+        items = JSON.parse(jsonMatch[0]);
+      } else {
+        items = JSON.parse(rawText);
       }
-      items = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      throw new Error(`Failed to parse AI response: ${rawText.slice(0, 200)}`);
     }
 
     if (!Array.isArray(items)) {
-      return new Response(
-        JSON.stringify({ error: "AI response was not an array." }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      throw new Error("AI response was not an array.");
     }
 
-    const sanitized: CopilotItem[] = items.map((item, i) => ({
+    const sanitized = items.map((item, i) => ({
       item_code: String(item.item_code ?? `ITEM-${i + 1}`),
       description: String(item.description ?? ""),
       quantity: Number(item.quantity) || 1,
@@ -132,9 +117,14 @@ ${prompt}`;
       JSON.stringify({ items: sanitized }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (err) {
+    console.error("Copilot error:", err);
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
+      JSON.stringify({ 
+        error: err instanceof Error ? err.message : "Unknown error",
+        stack: err instanceof Error ? err.stack : undefined
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

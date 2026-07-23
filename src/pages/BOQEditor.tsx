@@ -242,13 +242,22 @@ export default function BOQEditor() {
     }
   }
 
+  // 🔥 FIX: Replace entire BOQ with suggestion (no duplicates)
   function acceptSuggestion() {
     if (!copilotSuggestion) return;
-    setItems(prev => [...prev, ...copilotSuggestion.map((s, i) => ({ ...s, position: prev.length + i }))]);
+
+    // Replace all items with suggested items (AI already gave full list)
+    const mergedItems = copilotSuggestion.map((s, i) => ({
+      ...s,
+      position: i,
+    }));
+
+    setItems(mergedItems);
     setCopilotSuggestion(null);
     setCopilotPrompt('');
     setCopilotOpen(false);
     setHasChanges(true);
+    toast.success(`${mergedItems.length} items added to BOQ`);
   }
 
   if (loading) {
@@ -448,7 +457,7 @@ export default function BOQEditor() {
             <textarea
               value={copilotPrompt}
               onChange={(e) => setCopilotPrompt(e.target.value)}
-              placeholder="e.g. Extract all materials and quantities from the tender for the CIPP lining section"
+              placeholder="e.g. Extract all materials and quantities from the tender"
               className="w-full h-28 px-4 py-3 rounded-xl bg-[#111111] border border-[#242424] text-sm text-[#f5f5f5] placeholder-[#3a3a3a] focus:outline-none focus:border-[#f97316]/50 resize-none"
             />
 

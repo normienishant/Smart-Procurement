@@ -6,6 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+// 🔥 Multi-model fallback
+const MODELS = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "gemma2-9b-it",
+];
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -66,48 +73,79 @@ Evaluate eligibility and return a JSON object:
 Return ONLY valid JSON.`;
 
     const url = "https://api.groq.com/openai/v1/chat/completions";
-    const body = {
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
-      max_tokens: 1024,
-      response_format: { type: "json_object" },
-    };
+    let lastError: any = null;
 
-    const groqRes = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${groqKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    // 🔥 Try each model in order
+    for (const model of MODELS) {
+      try {
+        console.log(`🔄 Eligibility Checker trying model: ${model}`);
+        const body = {
+          model: model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.2,
+          max_tokens: 1024,
+          response_format: { type: "json_object" },
+        };
 
-    if (!groqRes.ok) {
-      const errText = await groqRes.text().catch(() => "");
-      throw new Error(`Groq API error (${groqRes.status}): ${errText.slice(0, 500)}`);
+        const groqRes = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${groqKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (groqRes.status === 429) {
+          const errText = await groqRes.text().catch(() => "");
+          console.warn(`⚠️ Eligibility model ${model} rate limited: ${errText.slice(0, 200)}`);
+          lastError = new Error(`Rate limit for ${model}`);
+          continue;
+        }
+
+        if (!groqRes.ok) {
+          const errText = await groqRes.text().catch(() => "");
+          if (groqRes.status === 400 && errText.includes("model")) {
+            console.warn(`⚠️ Eligibility model ${model} not available`);
+            lastError = new Error(`Model ${model} unavailable`);
+            continue;
+          }
+          throw new Error(`Groq API error (${groqRes.status}) with ${model}: ${errText.slice(0, 500)}`);
+        }
+
+        const groqData = await groqRes.json();
+        const rawText = groqData?.choices?.[0]?.message?.content ?? "{}";
+
+        let result;
+        try {
+          result = JSON.parse(rawText);
+        } catch {
+          const match = rawText.match(/\{[\s\S]*\}/);
+          if (!match) throw new Error("Invalid JSON from AI");
+          result = JSON.parse(match[0]);
+        }
+
+        return new Response(
+          JSON.stringify({
+            score: result.score ?? 0,
+            missing_documents: result.missing_documents ?? [],
+            analysis: result.analysis ?? "",
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+
+      } catch (err: any) {
+        if (err.message && (err.message.includes("Rate limit") || err.message.includes("unavailable") || err.message.includes("decommissioned"))) {
+          console.warn(`⚠️ Eligibility model ${model} failed: ${err.message}`);
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
     }
 
-    const groqData = await groqRes.json();
-    const rawText = groqData?.choices?.[0]?.message?.content ?? "{}";
+    throw lastError || new Error("All Eligibility Checker models failed.");
 
-    let result;
-    try {
-      result = JSON.parse(rawText);
-    } catch {
-      const match = rawText.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("Invalid JSON from AI");
-      result = JSON.parse(match[0]);
-    }
-
-    return new Response(
-      JSON.stringify({
-        score: result.score ?? 0,
-        missing_documents: result.missing_documents ?? [],
-        analysis: result.analysis ?? "",
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
