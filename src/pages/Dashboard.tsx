@@ -1,16 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  FileText,
-  Clock,
-  CheckCircle2,
-  AlertTriangle,
-  Upload,
-  ArrowRight,
-  TrendingUp,
-  Layers,
-  Activity,
-  DollarSign,
+  FileText, Clock, CheckCircle2, AlertTriangle, Upload, ArrowRight,
+  TrendingUp, Layers, DollarSign,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Tender } from '@/lib/database.types';
@@ -24,32 +16,14 @@ interface Stats {
   totalEstimatedValue: number;
 }
 
-function StatCard({
-  label,
-  value,
-  icon,
-  accent,
-}: {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  accent?: boolean;
-}) {
+function StatCard({ label, value, icon, accent }: { label: string; value: string | number; icon: React.ReactNode; accent?: boolean }) {
   return (
-    <div
-      className={`rounded-xl border p-5 flex items-start justify-between ${
-        accent
-          ? 'bg-[#f97316]/5 border-[#f97316]/20'
-          : 'bg-[#111111] border-[#1c1c1c]'
-      }`}
-    >
+    <div className={`rounded-xl border p-5 flex items-start justify-between ${accent ? 'bg-[#f97316]/5 border-[#f97316]/20' : 'bg-[#111111] border-[#1c1c1c]'}`}>
       <div>
         <p className="text-xs text-[#a3a3a3] uppercase tracking-widest mb-1.5">{label}</p>
         <p className={`text-2xl font-bold ${accent ? 'text-[#f97316]' : 'text-[#f5f5f5]'}`}>{value}</p>
       </div>
-      <div className={`p-2.5 rounded-lg ${accent ? 'bg-[#f97316]/15 text-[#f97316]' : 'bg-[#1a1a1a] text-[#525252]'}`}>
-        {icon}
-      </div>
+      <div className={`p-2.5 rounded-lg ${accent ? 'bg-[#f97316]/15 text-[#f97316]' : 'bg-[#1a1a1a] text-[#525252]'}`}>{icon}</div>
     </div>
   );
 }
@@ -124,30 +98,7 @@ export default function Dashboard() {
         <StatCard label="Total Est. Value" value={`₹${(stats.totalEstimatedValue / 10000000).toFixed(1)}Cr`} icon={<DollarSign size={18} />} />
       </div>
 
-      {/* Recent Activity Feed */}
-      <div className="bg-[#111111] border border-[#1c1c1c] rounded-xl p-5 mb-8">
-        <div className="flex items-center gap-2 mb-4">
-          <Activity size={16} className="text-[#f97316]" />
-          <h2 className="text-sm font-semibold text-[#f5f5f5] uppercase tracking-widest">Recent Activity</h2>
-        </div>
-        {tenders.length === 0 ? (
-          <p className="text-xs text-[#525252]">No activity yet. Upload your first tender.</p>
-        ) : (
-          <div className="space-y-2">
-            {tenders.slice(0, 5).map((t) => (
-              <div key={t.id} className="flex items-center justify-between border-b border-[#1c1c1c] pb-2 last:border-0">
-                <div className="flex items-center gap-3">
-                  <FileText size={14} className="text-[#525252]" />
-                  <span className="text-sm text-[#d4d4d4]">{t.title}</span>
-                </div>
-                <StatusBadge status={t.status} />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* CTA */}
+      {/* Upload CTA */}
       <div
         onClick={() => navigate('/upload')}
         className="mb-8 rounded-xl border border-dashed border-[#2a2a2a] hover:border-[#f97316]/40 hover:bg-[#f97316]/5 transition-all duration-200 cursor-pointer p-6 flex items-center justify-between group"
@@ -164,7 +115,7 @@ export default function Dashboard() {
         <ArrowRight size={16} className="text-[#525252] group-hover:text-[#f97316] transition-colors" />
       </div>
 
-      {/* Recent Tenders */}
+      {/* Recent Tenders Table */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-[#f5f5f5] uppercase tracking-widest">Recent Documents</h2>
