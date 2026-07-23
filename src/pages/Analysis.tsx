@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import type { Tender, TenderAnalysis } from '@/lib/database.types';
 import ProgressBar from '@/components/ProgressBar';
+import CopilotChat from '@/components/CopilotChat';
 import toast from 'react-hot-toast';
 
 type Phase = 'idle' | 'calling' | 'saving' | 'done' | 'error';
@@ -600,6 +601,12 @@ export default function Analysis() {
           </div>
         </div>
       )}
+
+      {/* AI Copilot Chat – always rendered as floating button */}
+      <CopilotChat
+        tenderId={tender.id}
+        tenderText={tender.file_text}
+      />
     </div>
   );
 }

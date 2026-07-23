@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ClipboardList, ArrowLeft, ArrowRight, Plus, Trash2, Loader2,
-  Sparkles, Send, AlertCircle, Save, X, Download, Check,
+  Sparkles, Send, AlertCircle, Save, X, Download, Check, Minimize2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { BOQItem, Tender } from '@/lib/database.types';
@@ -20,6 +20,15 @@ interface DraftItem {
   position: number;
 }
 
+interface CopilotSuggestion {
+  item_code: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unit_rate: number;
+  notes: string;
+}
+
 const emptyItem = (): DraftItem => ({
   item_code: '',
   description: '',
@@ -29,6 +38,14 @@ const emptyItem = (): DraftItem => ({
   notes: '',
   position: 0,
 });
+
+const SUGGESTIONS = [
+  "Extract all materials and quantities",
+  "Add 50 more manhole covers",
+  "Update rates to market standard",
+  "Remove all items",
+  "Add contingency items",
+];
 
 export default function BOQEditor() {
   const { tenderId } = useParams<{ tenderId: string }>();
@@ -111,7 +128,7 @@ export default function BOQEditor() {
     return () => document.removeEventListener('keydown', handler);
   }, [saveBOQ, navigate, tenderId]);
 
-  // Load data – FIXED with proper error handling
+  // Load data
   useEffect(() => {
     async function load() {
       if (!tenderId) {
@@ -242,11 +259,10 @@ export default function BOQEditor() {
     }
   }
 
-  // 🔥 FIX: Replace entire BOQ with suggestion (no duplicates)
+  // Replace entire BOQ with suggestion (no duplicates)
   function acceptSuggestion() {
     if (!copilotSuggestion) return;
 
-    // Replace all items with suggested items (AI already gave full list)
     const mergedItems = copilotSuggestion.map((s, i) => ({
       ...s,
       position: i,
@@ -258,6 +274,117 @@ export default function BOQEditor() {
     setCopilotOpen(false);
     setHasChanges(true);
     toast.success(`${mergedItems.length} items added to BOQ`);
+  }
+
+  // Copilot floating button + drawer
+  function CopilotFloatingButton() {
+    return (
+      <>
+        {/* Floating Button */}
+        <button
+          onClick={() => setCopilotOpen(true)}
+          className="fixed bottom-6 right-6 z-40 p-3.5 rounded-full bg-[#f97316] hover:bg-[#ea6c0a] shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 transition-all duration-200 group"
+          aria-label="Open AI Copilot"
+        >
+          <Sparkles size={22} className="text-white group-hover:scale-110 transition-transform" />
+        </button>
+
+        {/* Copilot Drawer - slides from right */}
+        {copilotOpen && (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setCopilotOpen(false)} />
+            <div className="relative w-full max-w-md bg-[#0d0d0d] h-full overflow-y-auto flex flex-col border-l border-[#1c1c1c] shadow-2xl">
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between p-4 border-b border-[#1c1c1c] bg-[#111111] flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={18} className="text-[#f97316]" />
+                  <h2 className="text-base font-semibold text-[#f5f5f5]">AI Copilot</h2>
+                  <span className="text-xs text-[#525252]">• BOQ</span>
+                </div>
+                <button
+                  onClick={() => setCopilotOpen(false)}
+                  className="p-1.5 rounded-md hover:bg-[#ffffff10] text-[#525252] hover:text-[#f5f5f5] transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5">
+                <p className="text-xs text-[#a3a3a3] mb-4">
+                  Describe what you need. The AI will generate BOQ line items based on the tender document.
+                </p>
+
+                <textarea
+                  value={copilotPrompt}
+                  onChange={(e) => setCopilotPrompt(e.target.value)}
+                  placeholder="e.g. Extract all materials and quantities from the tender"
+                  className="w-full h-24 px-4 py-3 rounded-xl bg-[#111111] border border-[#242424] text-sm text-[#f5f5f5] placeholder-[#3a3a3a] focus:outline-none focus:border-[#f97316]/50 resize-none"
+                />
+
+                <button
+                  onClick={callCopilot}
+                  disabled={!copilotPrompt.trim() || copilotLoading}
+                  className="w-full mt-3 py-2.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0a] text-white text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+                >
+                  {copilotLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {copilotLoading ? 'Generating…' : 'Generate Items'}
+                </button>
+
+                {copilotError && (
+                  <div className="flex items-start gap-2 mt-4 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
+                    <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-400">{copilotError}</p>
+                  </div>
+                )}
+
+                {/* Suggestions */}
+                <div className="mt-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#525252] mb-2">Quick Prompts</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SUGGESTIONS.map((s, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCopilotPrompt(s)}
+                        className="px-2.5 py-1 text-[10px] bg-[#1a1a1a] border border-[#242424] rounded-full text-[#a3a3a3] hover:border-[#f97316]/50 hover:text-[#f5f5f5] transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {copilotSuggestion && copilotSuggestion.length > 0 && (
+                  <div className="mt-5 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-[#525252] mb-2">
+                      Suggested Items ({copilotSuggestion.length})
+                    </p>
+                    <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                      {copilotSuggestion.map((s, i) => (
+                        <div key={i} className="rounded-lg bg-[#111111] border border-[#1c1c1c] p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium text-[#f97316]">{s.item_code || '—'}</span>
+                            <span className="text-xs text-[#a3a3a3]">
+                              {s.quantity} {s.unit} · ₹{s.unit_rate}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#d4d4d4]">{s.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={acceptSuggestion}
+                      className="w-full mt-2 py-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 text-sm font-medium transition-colors"
+                    >
+                      Add All to BOQ
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
   }
 
   if (loading) {
@@ -307,23 +434,6 @@ export default function BOQEditor() {
           </button>
         </div>
       </div>
-
-      {/* AI Copilot Button */}
-      <button
-        onClick={() => setCopilotOpen(true)}
-        className="mb-4 w-full rounded-xl border border-dashed border-[#f97316]/30 hover:border-[#f97316]/50 hover:bg-[#f97316]/5 transition-all p-4 flex items-center justify-between group"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-[#f97316]/10 flex items-center justify-center">
-            <Sparkles size={16} className="text-[#f97316]" />
-          </div>
-          <div className="text-left">
-            <p className="text-sm font-medium text-[#f5f5f5]">AI Copilot — Generate BOQ Items</p>
-            <p className="text-xs text-[#525252] mt-0.5">Ask Groq to extract or suggest line items from the tender</p>
-          </div>
-        </div>
-        <ArrowRight size={14} className="text-[#f97316]" />
-      </button>
 
       {/* Table */}
       <div className="rounded-xl border border-[#1c1c1c] overflow-hidden mb-4">
@@ -435,75 +545,8 @@ export default function BOQEditor() {
       </button>
       <p className="text-center text-[10px] text-[#525252] mt-2">Tip: Ctrl+S to save, Ctrl+Enter to proceed</p>
 
-      {/* Copilot Drawer */}
-      {copilotOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setCopilotOpen(false)} />
-          <div className="relative w-full max-w-md bg-[#0d0d0d] border-l border-[#1c1c1c] h-full overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <Sparkles size={18} className="text-[#f97316]" />
-                <h2 className="text-base font-semibold text-[#f5f5f5]">AI Copilot</h2>
-              </div>
-              <button onClick={() => setCopilotOpen(false)} className="p-1.5 rounded-md hover:bg-[#ffffff10] text-[#525252]">
-                <X size={16} />
-              </button>
-            </div>
-
-            <p className="text-xs text-[#a3a3a3] mb-4">
-              Describe what you need. The AI will generate BOQ line items based on the tender document.
-            </p>
-
-            <textarea
-              value={copilotPrompt}
-              onChange={(e) => setCopilotPrompt(e.target.value)}
-              placeholder="e.g. Extract all materials and quantities from the tender"
-              className="w-full h-28 px-4 py-3 rounded-xl bg-[#111111] border border-[#242424] text-sm text-[#f5f5f5] placeholder-[#3a3a3a] focus:outline-none focus:border-[#f97316]/50 resize-none"
-            />
-
-            <button
-              onClick={callCopilot}
-              disabled={!copilotPrompt.trim() || copilotLoading}
-              className="w-full mt-3 py-2.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0a] text-white text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
-            >
-              {copilotLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              {copilotLoading ? 'Generating…' : 'Generate Items'}
-            </button>
-
-            {copilotError && (
-              <div className="flex items-start gap-2 mt-4 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
-                <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-red-400">{copilotError}</p>
-              </div>
-            )}
-
-            {copilotSuggestion && copilotSuggestion.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-[#525252] mb-2">
-                  Suggested Items ({copilotSuggestion.length})
-                </p>
-                {copilotSuggestion.map((s, i) => (
-                  <div key={i} className="rounded-lg bg-[#111111] border border-[#1c1c1c] p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-[#f97316]">{s.item_code || '—'}</span>
-                      <span className="text-xs text-[#a3a3a3]">
-                        {s.quantity} {s.unit} · ₹{s.unit_rate}
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#d4d4d4]">{s.description}</p>
-                  </div>
-                ))}
-                <button
-                  onClick={acceptSuggestion}
-                  className="w-full mt-2 py-2.5 rounded-xl bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 text-sm font-medium transition-colors"
-                >
-                  Add All to BOQ
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* AI Copilot Floating Button + Drawer */}
+      <CopilotFloatingButton />
     </div>
   );
 }
