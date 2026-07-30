@@ -6,6 +6,12 @@ import UploadTender from '@/pages/UploadTender';
 import Analysis from '@/pages/Analysis';
 import BOQEditor from '@/pages/BOQEditor';
 import PurchaseOrder from '@/pages/PurchaseOrder';
+import Tenders from '@/pages/Tenders';
+import Admin from '@/pages/Admin';
+import CompanySettings from '@/pages/CompanySettings';
+import FinancialDashboard from '@/pages/FinancialDashboard';
+import Analytics from '@/pages/Analytics';
+import Reports from '@/pages/Reports';
 
 export default function App() {
   return (
@@ -20,9 +26,14 @@ export default function App() {
           <Route path="/boq" element={<Navigate to="/" replace />} />
           <Route path="/purchase-order/:tenderId" element={<PurchaseOrder />} />
           <Route path="/purchase-order" element={<Navigate to="/" replace />} />
+          <Route path="/tenders" element={<Tenders />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/company-settings" element={<CompanySettings />} />
+          <Route path="/financials" element={<FinancialDashboard />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        {/* Toast container – positioned bottom-right with dark theme */}
         <Toaster
           position="bottom-right"
           toastOptions={{

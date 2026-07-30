@@ -66,3 +66,35 @@ export interface TenderAnalysis {
   technical_specs?: TechnicalSpec[];
   important_clauses?: ImportantClause[];
 }
+
+// Add these interfaces in your existing file
+export interface CompanySettings {
+  id: string;
+  company_name: string;
+  logo_url: string;
+  address: string;
+  gstin: string;
+  pan: string;
+  phone: string;
+  email: string;
+  updated_at: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  user_id?: string;
+  user_name: string;
+  action: string;
+  details: string;
+  ip_address?: string;
+  created_at: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  last_active: string;
+  created_at: string;
+}
